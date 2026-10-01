@@ -152,9 +152,12 @@ jobs:
           mkdir -p "$ARCHIVE_DIR"
           ls -la "$ARCHIVE_DIR"
           echo "::endgroup::"
-          ARCHIVE=$(find "$ARCHIVE_DIR" -maxdepth 1 -type f -name '*.tar' | head -1)
+          # The suffix is bluebuild's ARCHIVE_SUFFIX, observed on the runner as
+          # `kinrin-distro.tar.gz`; a glob of `*.tar` misses it, which is what
+          # one cycle found.
+          ARCHIVE=$(find "$ARCHIVE_DIR" -maxdepth 1 -type f -name '*.tar.gz' | head -1)
           if [ -z "$ARCHIVE" ]; then
-            echo "::error::bluebuild produced no .tar under $ARCHIVE_DIR"
+            echo "::error::bluebuild produced no .tar.gz under $ARCHIVE_DIR"
             exit 1
           fi
           echo "loading $ARCHIVE"

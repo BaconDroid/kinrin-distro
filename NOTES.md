@@ -1159,7 +1159,9 @@ happens, and not because of anything in this repository:
   `--output type=oci,dest=FILE`, so the result is a file on disk instead of
   something in a daemon nobody reads. The load step reads the ref back out of
   `podman load`'s own stdout, because that output path applies no `-t` tag and
-  the name is therefore not knowable in advance.
+  the name is therefore not knowable in advance. The file is written as
+  `<name>.tar.gz` (bluebuild's `ARCHIVE_SUFFIX`), so the glob must match
+  `.tar.gz` and not `.tar`.
 
 So the build job gains `--build-driver docker --archive`, plus one load step, and
 everything downstream is the plan's text unchanged — the `--pull=never` gates, the
