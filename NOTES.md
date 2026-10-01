@@ -1128,8 +1128,58 @@ Verified by execution on this machine:
   `dst=/tmp/files,rw` mounts and all thirteen `files.yaml` pairs, which is the
   other unpinned BlueBuild fact from §1.2 seen in the output rather than in the
   source.
-- Consequently the local preflight build was run with `- type: signing` removed,
+  Consequently the local preflight build was run with `- type: signing` removed,
   so the other eight modules could be exercised end to end. That removal is a
   **local test artefact only**: `recipes/recipe.yaml` in this repository keeps
   `- type: signing` last, exactly as §5 requires, and the CI workflow builds the
   unmodified recipe.
+
+### The one thing left, as a single sequence
+
+Everything else in this file is done. The publication is not, and it is one
+sequence — generate the pair, hand the private half to CI, commit the public half
+as a build input, let the push start CI. `README.md` § "Publish it" carries it
+with the reasoning; the short form:
+
+```bash
+cd ~/Projects/kinrin-distro
+set -euo pipefail
+REPO=BaconDroid/kinrin-distro
+
+COSIGN_PASSWORD="" cosign generate-key-pair --output-key-prefix cosign
+gh secret set COSIGN_PRIVATE_KEY --repo "$REPO" < cosign.key
+shred -u cosign.key
+
+git add cosign.pub
+git commit -m 'Add the cosign public half: the build input the signing module requires'
+git push origin "$REPO"
+
+gh run watch --repo "$REPO" --exit-status
+```
+
+Three details that are not obvious and are the difference between this working
+and not:
+
+- **`COSIGN_PASSWORD=""` is required**, not optional. `cosign
+  generate-key-pair` otherwise blocks on an interactive password question, which
+  in a non-interactive shell is a hang, not a prompt. It also produces an
+  **unencrypted** key — which is why the publish job needs no
+  `COSIGN_PASSWORD` secret to match. The trade-off is real and is stated in the
+  README: the private half rests in a GitHub secret with no passphrase on top.
+  Generate with a passphrase instead and add `COSIGN_PASSWORD` to the `Sign`
+  step's `env:` block in `build.yml`, or the run blocks on a prompt that never
+  comes.
+- **`git add cosign.pub` is named, never a blanket add.** `.gitignore` is
+  exactly `kinrin.tar` — PROMPT requires that, and specifically forbids ignoring
+  `*.pub` — so nothing stops a `git add -A` from staging `cosign.key` between the
+  two commands above. Naming the file is the whole mitigation.
+- **`shred -u cosign.key` before the commit**, not after. The private half is on
+  disk from step 1 until step 2 completes; deleting it immediately closes the
+  window rather than leaving it open until the commit happens to run.
+
+Afterwards the GHCR package must be made **public** in the browser — GHCR creates
+it private, and the repository being public does not change that. The CLI token
+in use carries `gist, read:org, repo, workflow` and **no packages scope**, so
+`gh api` on the package endpoint is refused (`You need at least read:packages
+scope`). That is an environment limit, stated here rather than presented as a
+step that was tried and worked.

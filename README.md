@@ -161,18 +161,14 @@ or the repository. The **public** half belongs at the repository root as `cosign
 input, not a secret — and is published as the `kinrin-cosign-pub` artifact of the
 publish job so it travels with the release.
 
-> **`cosign.pub` is not in this tree yet.** The key pair was not generated: the
-> machine this was built on refused the write as a secret path. Generate it once,
-> before the first publication, and commit the **public half only**:
+> **`cosign.pub` is not in this tree yet.** The pair was never generated: the
+> machine this was built on refused the write as a secret path, and the correct
+> response to that is to report it, not to route around it. Until the public half
+> exists, `bluebuild` reaches the **last** module and exits 1 — after the whole
+> twenty-minute build. See `NOTES.md` §5.
 >
-> ```bash
-> cosign generate-key-pair --output-key-prefix cosign
-> # commit cosign.pub ; keep cosign.key out of the repository entirely
-> gh secret set COSIGN_PRIVATE_KEY < cosign.key
-> ```
->
-> Until it is there, `bluebuild` dies at the **last** module, after the
-> twenty-minute build — see `NOTES.md` §5.
+> One command sequence finishes the publication; nothing above is a prerequisite
+> for it. See [Publish it](#publish-it) below.
 
 Verify what you actually installed, against the digest rather than a tag:
 
@@ -251,6 +247,29 @@ pushed digest (§6.1). `niri validate` runs **inside** the built image — the
 binary is absent from a CI runner and a host-side call would not see the image's
 config anyway.
 
+**What has actually run.** The image was built locally, end to end from the
+eight module files — 2116 packages, 10.9 GB — and four of the six checks pass
+inside it:
+
+```
+PASS  niri validate --config /etc/niri/config.kdl
+PASS  files.yaml presence chain, 13 paths
+PASS  os-release ID=kinrin
+PASS  os-release ID_LIKE=fedora
+```
+
+The other two are unprovable here rather than passing. Criterion 28b needs the
+`signing` module, which needs `cosign.pub`, which does not exist yet — see
+[Publish it](#publish-it). And `cosign verify` needs a pushed digest. That is
+the honest state, not four out of six quietly reported as good enough.
+
+One thing worth knowing about the policy check, because it is easy to get wrong:
+`/etc/containers/policy.json` **is already present** in a plain Kinoite base,
+shipped by `containers-common`. Its `.transports.docker` is `null`. So a gate
+that only did `test -f /etc/containers/policy.json` would pass on an image whose
+verification policy says nothing about this repository. The step does both —
+`test -f` **and** `jq -e '.transports.docker | has("ghcr.io/<owner>/<repo>")'`.
+
 ## Monitoring
 
 `monitor-fedora.yml` runs monthly and opens one issue once **both** COPR package
@@ -261,6 +280,79 @@ one of the two is still COPR-only.
 
 A broken COPR turns the monthly build red and leaves the published image healthy.
 The risk is not the outage — it is not seeing it.
+
+## Publish it
+
+Everything above builds and runs. This is the part that is **not** done yet, and
+it is one sequence: generate the key pair, hand the private half to CI as a
+secret, commit the public half as a build input, and let the push start CI.
+
+```bash
+cd ~/Projects/kinrin-distro
+set -euo pipefail
+REPO=BaconDroid/kinrin-distro
+
+# 1. The pair. COSIGN_PASSWORD="" writes an UNENCRYPTED key with no prompt —
+#    cosign otherwise blocks on an interactive password question. The publish
+#    job needs no COSIGN_PASSWORD secret to match, because the key is unencrypted.
+COSIGN_PASSWORD="" cosign generate-key-pair --output-key-prefix cosign
+
+# 2. The private half becomes a CI secret, then leaves the disk immediately.
+gh secret set COSIGN_PRIVATE_KEY --repo "$REPO" < cosign.key
+shred -u cosign.key
+
+# 3. The public half is a BUILD INPUT — the `signing` module cannot find it
+#    otherwise. Named explicitly: .gitignore is exactly `kinrin.tar`, so a
+#    blanket `git add` is the only way a private key could ever get in here.
+git add cosign.pub
+git commit -m 'Add the cosign public half: the build input the signing module requires'
+git push origin "$REPO"
+
+# 4. The push starts build.yml (on: push). Watch it to the end.
+gh run watch --repo "$REPO" --exit-status
+```
+
+Then, once the run is green, make the GHCR package public — **GHCR creates it
+private**, and an unpublished package cannot be pulled even though the repository
+is public:
+
+```
+https://github.com/users/BaconDroid/packages/container/kinrin-distro/settings
+```
+
+Flip **Change visibility → Public**. It has to be done in the browser here: the
+CLI token in use carries `gist, read:org, repo, workflow` and **no packages
+scope**, so `gh api` on the package endpoint is refused. A token with
+`write:packages` can do it instead:
+
+```bash
+gh api -X PATCH /user/packages/container/kinrin-distro -f visibility=public
+```
+
+Finally, record what was published — §6/§7's rollback needs the digest, and a
+date tag is only a record:
+
+```bash
+DIGEST=$(skopeo inspect --format '{{.Digest}}' docker://ghcr.io/bacondroid/kinrin-distro:latest)
+echo "digest: $DIGEST"
+cosign verify --key cosign.pub "ghcr.io/bacondroid/kinrin-distro@$DIGEST"
+```
+
+`cosign verify` must pass here. If it does not, the image is **not** verifiable
+and the boot-time policy will resolve nothing — that is the whole point of the
+key, so treat a failure as a real defect rather than a warning.
+
+Afterwards, put the digest and the date tag into `NOTES.md` §5 so the next build
+knows which deployment a rollback should return to.
+
+### Re-running without a new key
+
+The key pair is generated **once**, not per build. To rebuild or re-publish,
+skip steps 1 and 2 and start at step 3, or dispatch CI directly:
+
+```bash
+gh workflow run build.yml --repo BaconDroid/kinrin-distro
+```
 
 ## Licence
 
