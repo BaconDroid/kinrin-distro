@@ -101,7 +101,7 @@ flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/fl
 
 Discover opens on demand; no system remote is ever added.
 
-## Roll back
+## Roll back (PLAN §7)
 
 ```bash
 bootc status                    # active and staged deployments
@@ -157,9 +157,22 @@ The **GHCR package must be made public explicitly** — GHCR creates it private.
 
 The image is signed with **cosign** over the pushed digest, at publish time.
 The private key is the CI secret `COSIGN_PRIVATE_KEY` and never enters the image
-or the repository. The **public** half is committed at the repository root as
-`cosign.pub` — it is a build input, not a secret — and it is published as the
-`kinrin-cosign-pub` artifact of the publish job, so it travels with the release.
+or the repository. The **public** half belongs at the repository root as `cosign.pub` — a build
+input, not a secret — and is published as the `kinrin-cosign-pub` artifact of the
+publish job so it travels with the release.
+
+> **`cosign.pub` is not in this tree yet.** The key pair was not generated: the
+> machine this was built on refused the write as a secret path. Generate it once,
+> before the first publication, and commit the **public half only**:
+>
+> ```bash
+> cosign generate-key-pair --output-key-prefix cosign
+> # commit cosign.pub ; keep cosign.key out of the repository entirely
+> gh secret set COSIGN_PRIVATE_KEY < cosign.key
+> ```
+>
+> Until it is there, `bluebuild` dies at the **last** module, after the
+> twenty-minute build — see `NOTES.md` §5.
 
 Verify what you actually installed, against the digest rather than a tag:
 
@@ -203,7 +216,8 @@ the repository, so there is nothing to gitignore — the recipe is the whole ima
 description, and no Dockerfile is delivered.
 
 `cosign.pub` must exist at the repository root or the build dies at the **last**
-module, after twenty minutes. It is a public key, so it is committed.
+module, after twenty minutes. It is a public key, so it belongs in the
+repository — see the note above for its current state.
 
 ### Layout
 

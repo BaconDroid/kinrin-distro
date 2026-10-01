@@ -39,51 +39,88 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve each COPR package name against the COPR alone
-        # Two names, two separate probes, deliberately. The probe runs inside a
-        # fedora:44 container rather than on the runner: ubuntu-latest has no dnf,
-        # and a plain fedora container enables ONLY the COPR — so a hit means
-        # "still COPR-only", which is exactly what must keep the issue closed.
-        id: copr
+      - name: Probe both COPR names and both Fedora shell names
+        # Four probes, deliberately, and they are not interchangeable:
+        #
+        #   copr_dms          is `dms` still resolvable FROM THE COPR?  -> not landed
+        #   copr_dms_greeter  is `dms-greeter` still resolvable FROM THE COPR? -> not landed
+        #   fedora_dms        does official Fedora resolve `dms`?
+        #   fedora_shell      does official Fedora resolve either `dms` OR `DankMaterialShell`?
+        #
+        # Landing means BOTH COPR names are gone from the COPR **and** the shell
+        # is resolvable from official Fedora. `DankMaterialShell` is already in
+        # Fedora today, so its presence alone says nothing — it is the COPR
+        # probes that carry the signal, and the Fedora probes are what make a
+        # "landed" verdict mean "there is something to migrate to" rather than
+        # "the COPR broke". A broken or expired COPR makes both COPR probes empty,
+        # and a broken COPR is the monthly BUILD's signal, not this job's — hence
+        # the Fedora side has to answer too.
+        id: probe
         env:
           PROBE: |
             set -uo pipefail
             dnf -y install dnf-plugins-core >/dev/null
-            dnf -y copr enable avengemedia/dms
-            dnf -y makecache
 
-            in_copr() {
-              # Non-empty output means the name still resolves from the COPR.
+            resolve() {
+              # Non-empty means the name resolves from the enabled repos.
               # dnf5 prints nothing and exits 0 for an unknown name, so an empty
-              # result means absent — never treat a non-zero exit as "absent".
+              # result means absent — never read a non-zero exit as "absent".
               dnf repoquery --qf '%{name}-%{evr}' "$1" 2>/dev/null | head -1
             }
 
-            dms_hit=$(in_copr dms || true)
-            greeter_hit=$(in_copr dms-greeter || true)
+            # --- 1. the COPR alone ---
+            dnf -y copr enable avengemedia/dms >/dev/null
+            dnf -y makecache >/dev/null
+            copr_dms=$(resolve dms || true)
+            copr_dms_greeter=$(resolve dms-greeter || true)
+            dnf -y copr disable avengemedia/dms >/dev/null
 
-            {
-              echo "dms_in_copr=${dms_hit}"
-              echo "dms_greeter_in_copr=${greeter_hit}"
-              if [ -n "$dms_hit" ] || [ -n "$greeter_hit" ]; then
-                echo "landed=false"
-              else
-                echo "landed=true"
-              fi
-            } >> "$GITHUB_OUTPUT"
+            # --- 2. official Fedora alone ---
+            # Assert it: a COPR left enabled above would answer these wrongly.
+            if dnf repolist --enabled 2>/dev/null | grep -q 'copr'; then
+              echo "::error::a COPR is still enabled; the Fedora probes would lie"
+              exit 1
+            fi
+            dnf -y makecache >/dev/null
+            fedora_dms=$(resolve dms || true)
+            fedora_shell_dms=$(resolve dms || true)
+            fedora_shell_named=$(resolve DankMaterialShell || true)
+
+            if [ -n "$fedora_shell_dms" ] || [ -n "$fedora_shell_named" ]; then
+              fedora_shell=yes
+            else
+              fedora_shell=no
+            fi
+
+            if [ -z "$copr_dms" ] && [ -z "$copr_dms_greeter" ] && [ "$fedora_shell" = yes ]; then
+              landed=true
+            else
+              landed=false
+            fi
+
+            # Printed to STDOUT, not written to a file. A bind-mounted
+            # $GITHUB_OUTPUT needs a host file the container user can append to,
+            # and rootless podman in particular turns that into a permission
+            # problem for no benefit — the host reads the results off stdout.
+            echo "::probe::copr_dms=${copr_dms}"
+            echo "::probe::copr_dms_greeter=${copr_dms_greeter}"
+            echo "::probe::fedora_dms=${fedora_dms}"
+            echo "::probe::fedora_shell=${fedora_shell}"
+            echo "::probe::fedora_shell_name=${fedora_shell_dms:-${fedora_shell_named}}"
+            echo "::probe::landed=${landed}"
         run: |
-          docker run --rm \
-            -e GITHUB_OUTPUT="$GITHUB_OUTPUT" \
-            -e PROBE="$PROBE" \
-            -v "$GITHUB_OUTPUT:/out" \
-            docker.io/library/fedora:44 bash -c "$PROBE"
-          {
-            echo "dms in COPR:         ${dms:-}"
-            echo "dms-greeter in COPR: ${greeter:-}"
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          out=$(docker run --rm -e PROBE="$PROBE" \
+            docker.io/library/fedora:44 bash -c "$PROBE")
+          echo "$out"
+          # Turn the tagged lines into step outputs on the HOST side, where
+          # $GITHUB_OUTPUT is actually writable.
+          while IFS= read -r line; do
+            printf '%s\n' "${line#::probe::}" >> "$GITHUB_OUTPUT"
+          done <<< "$(printf '%s\n' "$out" | grep '^::probe::')"
 
       - name: Open the migration issue once both names have left the COPR
-        if: steps.copr.outputs.landed == 'true'
+        if: steps.probe.outputs.landed == 'true'
         run: |
           set -euo pipefail
           # Idempotent: a closed issue means the work is done, so do not reopen.
@@ -141,8 +178,14 @@ jobs:
             echo
             echo '| Package | Still in the COPR? |'
             echo '|---|---|'
-            echo "| \`dms\` | ${{ steps.copr.outputs.dms_in_copr || 'not in the COPR' }} |"
-            echo "| \`dms-greeter\` | ${{ steps.copr.outputs.dms_greeter_in_copr || 'not in the COPR' }} |"
+            echo "| \`dms\` — COPR | ${{ steps.probe.outputs.copr_dms || 'gone from the COPR' }} |"
+            echo "| \`dms\` — Fedora | ${{ steps.probe.outputs.fedora_dms || 'not in Fedora' }} |"
+            echo "| \`dms-greeter\` — COPR | ${{ steps.probe.outputs.copr_dms_greeter || 'gone from the COPR' }} |"
+            echo "| shell in Fedora (either name) | ${{ steps.probe.outputs.fedora_shell_name || 'neither name resolves' }} |"
+            echo ""
+            echo "Landed = **both** COPR names gone from the COPR **and** the shell"
+            echo "resolvable from official Fedora. \`DankMaterialShell\` is already in"
+            echo "Fedora, so its presence alone is not the signal."
             echo
             echo 'Landed means **both** COPR names are gone from the COPR.'
             echo '`DankMaterialShell` and `danksearch` are already in Fedora, so'

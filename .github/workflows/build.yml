@@ -41,9 +41,7 @@ jobs:
       - name: Install bluebuild
         run: |
           set -euo pipefail
-          VERSION=v0.9.37
-          DIGEST=sha256:281d3152c1a4e30e75e777f78b07a8c5c1e5130cb44092f4b4b507402556ec0a
-          REF="ghcr.io/blue-build/cli@${DIGEST}"
+          REF="ghcr.io/blue-build/cli@sha256:281d3152c1a4e30e75e777f78b07a8c5c1e5130cb44092f4b4b507402556ec0a"
           sudo mkdir -p /opt/bb
           podman create --name bb-install "$REF"
           podman cp bb-install:/out/bluebuild /opt/bb/bluebuild
@@ -77,9 +75,7 @@ jobs:
       - name: Install bluebuild
         run: |
           set -euo pipefail
-          VERSION=v0.9.37
-          DIGEST=sha256:281d3152c1a4e30e75e777f78b07a8c5c1e5130cb44092f4b4b507402556ec0a
-          REF="ghcr.io/blue-build/cli@${DIGEST}"
+          REF="ghcr.io/blue-build/cli@sha256:281d3152c1a4e30e75e777f78b07a8c5c1e5130cb44092f4b4b507402556ec0a"
           sudo mkdir -p /opt/bb
           podman create --name bb-install "$REF"
           podman cp bb-install:/out/bluebuild /opt/bb/bluebuild
@@ -104,7 +100,7 @@ jobs:
       # would not see the image's config anyway.
       - name: niri validate inside the image
         run: |
-          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+          podman run --rm "ghcr.io/${REPO,,}:latest" \
             niri validate --config /etc/niri/config.kdl
 
       # Gate 2 of 4 (criterion 28). The only check that can see a `files`
@@ -113,7 +109,7 @@ jobs:
       # exits 0. Thirteen paths, one && chain, the §5.2 list in order.
       - name: files.yaml presence chain
         run: |
-          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" sh -c 'test -f /etc/xdg/xdg-desktop-portal/portals.conf && test -f /etc/greetd/config.toml && test -f /etc/systemd/logind.conf.d/kinrin.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf && test -f /usr/lib/systemd/user/niri-vrr.service && test -f /etc/environment.d/90-dms.conf && test -f /usr/share/dms/cli-policy.json && test -f /etc/skel/.config/niri/local.kdl && test -f /etc/skel/.config/DankMaterialShell/settings.json'
+          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/xdg/xdg-desktop-portal/portals.conf && test -f /etc/greetd/config.toml && test -f /etc/systemd/logind.conf.d/kinrin.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf && test -f /usr/lib/systemd/user/niri-vrr.service && test -f /etc/environment.d/90-dms.conf && test -f /usr/share/dms/cli-policy.json && test -f /etc/skel/.config/niri/local.kdl && test -f /etc/skel/.config/DankMaterialShell/settings.json'
 
       # Gate 3 of 4 (criterion 28b) + the two greps the prompt adds (§5). Read the
       # signing policy out of the image rather than asserting it: an absent policy
@@ -121,16 +117,24 @@ jobs:
       # goes to stderr and the jq below cannot fail on it.
       - name: Read the signing policy out of the built image
         run: |
-          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
-          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" sh -c 'test -f /etc/containers/policy.json || exit 1'
-          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
+          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/containers/policy.json || exit 1'
+          podman run --rm "ghcr.io/${REPO,,}:latest" \
             jq -r '.transports.docker | keys[]' /etc/containers/policy.json
+          # ASSERT, do not merely print. The policy key is the recipe `name:`
+          # joined to the build registry, while the push target is
+          # ghcr.io/${{ github.repository }} — if those two ever differ, the
+          # image ships a verification policy covering a reference nothing
+          # publishes, and boot-time verification of the published image resolves
+          # nothing. Printing the key would have passed on a mismatch; this fails.
+          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c \
+            'jq -e --arg r "ghcr.io/${REPO,,}" ".transports.docker | has(\$r)" /etc/containers/policy.json'
 
       - name: os-release carries ID=kinrin and ID_LIKE=fedora
         run: |
-          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+          podman run --rm "ghcr.io/${REPO,,}:latest" \
             grep -qE '^ID="?kinrin"?$' /etc/os-release
-          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+          podman run --rm "ghcr.io/${REPO,,}:latest" \
             grep -qE '^ID_LIKE="?fedora"?$' /etc/os-release
 
       # Hand the image to the publish job. Each job gets a FRESH runner, so
@@ -141,7 +145,7 @@ jobs:
       # publish job fails later with a confusing error instead of here.
       - name: Save the image
         run: |
-          set -o pipefail && podman save "ghcr.io/${OWNER,,}/kinrin:latest" | zstd -T0 > kinrin.tar
+          set -o pipefail && podman save "ghcr.io/${REPO,,}:latest" | zstd -T0 > kinrin.tar
 
       - uses: actions/upload-artifact@v4
         with:
@@ -208,8 +212,8 @@ jobs:
         # *registry* reference and fails with `connection refused` on a runner.
         # Two copies because one copy pushes one tag.
         run: |
-          skopeo copy --all "containers-storage:ghcr.io/${OWNER,,}/kinrin:latest" "docker://ghcr.io/${REPO,,}:latest"
-          skopeo copy --all "containers-storage:ghcr.io/${OWNER,,}/kinrin:latest" "docker://ghcr.io/${REPO,,}:${{ steps.meta.outputs.tag }}"
+          skopeo copy --all "containers-storage:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:latest"
+          skopeo copy --all "containers-storage:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:${{ steps.meta.outputs.tag }}"
 
       # AFTER the push, and read back from the registry: `skopeo copy` rewrites
       # the layers, so the local manifest digest is not the one the registry

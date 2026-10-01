@@ -57,7 +57,24 @@ criterion 23" without ambiguity. Keep the numbers stable.
       setting did not override it. Do **not** edit
       `/etc/systemd/logind.conf` to make this pass — that file is shipped by a
       package, and the drop-in is what the image ships.
-- [ ] **11.** `dms-greeter` displays and lets you log in.
+- [ ] **11.** `dms-greeter` displays and lets you log in. **Then run the
+      first-boot check**, because a greeter that renders is not evidence that
+      the display manager wiring is right:
+
+      ```bash
+      systemctl get-default                                    # graphical.target
+      systemctl is-enabled greetd                              # enabled
+      systemctl is-enabled plasmalogin.service                 # disabled or not-found
+      systemctl is-enabled sddm.service                        # disabled or not-found
+      ```
+
+      All four must hold. Checking only the `display-manager.service` symlink
+      passes **vacuously** if the base ever enables `plasmalogin.service`
+      directly — and a second display manager racing greetd for VT1 is the same
+      unsettled boot. Run `dms-greeter enable` only if the target or greetd is
+      actually wrong: the recipe already does the equivalent, and
+      `dms-greeter enable` labels nothing, so it is a first-boot check rather
+      than a build step.
 - [ ] **12.** **After 12b's `dms-greeter sync`**, the greeter shows the DMS theme
       colours from the same theme file: Dracula, not a second hand-picked theme.
       No wallpaper claim — none ships. This is a **continuation of 12b, not an
@@ -89,6 +106,11 @@ Check, after the first login:
 The shipped README's wording that `sync` "copies" the theme is loose; the code
 and the binary both link the root files.
 
+- [ ] **13.** The greeter is **expected** to list niri. Record whether it also
+      offers Plasma — either way, the guaranteed path is `Ctrl+Alt+F3` then
+      `startplasma-wayland`, so criterion 6 covers the fallback independently of
+      what the greeter shows.
+
 ## Hardware
 
 - [ ] **9.** An X11-only app starts, which also tests `xwayland-satellite`.
@@ -106,6 +128,11 @@ and the binary both link the root files.
 - [ ] **16.** The greeter displays with no extra group: `getent group input` does
       not contain `greeter`. A black screen is read in `journalctl -u greetd`,
       not fixed with rights.
+- [ ] **17.** Change the DMS theme and the **niri colours follow live**. This
+      only happens because `~/.config/niri/config.kdl` exists, so niri's
+      includes resolve into the home where matugen writes — that is exactly what
+      the skel copy of §4.5 is for, and its absence is invisible until this
+      criterion runs.
 - [ ] **18.** Secure Boot, only if you use it. It tests the base, not this image.
 
 ## Games

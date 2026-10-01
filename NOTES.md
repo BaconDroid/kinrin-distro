@@ -38,8 +38,8 @@ the drift changes a decision in the recipe — the decisions rest on the
 | `--config` on validate, `src/cli.rs:51-58` | CONFIRMED | as cited |
 | theme mode selection, `Theme.qml:1895-1896` | **DRIFTED** | `:1894` reads `isLight`, `:1911-1912` read `customThemeRawData.dark/.light`, `:1965` selects `isLight ? lightTheme : darkTheme` |
 | `DMS_DISABLE_MATUGEN`, `Theme.qml:24` | **DRIFTED (+1)** | `Theme.qml:25` — and it is a `readonly property bool` accepting `"1"` **or** `"true"`, not a bare `=1` constant |
-| matugen toggles, `SettingsSpec.js:940/943/952/955/994/1003` | **all six DRIFTED** | `1001-1003` Gtk, `1004-1006` Niri, `1013-1015` Qt5ct, `1016-1018` Qt6ct, `1055-1057` Neovim, `1064-1066` Kcolorscheme. The `def:` **values are all correct**, and "exactly one `def: false` among the 26 `matugenTemplate*` entries" is CONFIRMED — `matugenTemplateNeovim` at `:1055` |
-| `settingsConfigVersion`, `SettingsData.qml:24` | **line CONFIRMED, value is NOT 33** | line `:24` is right; see §2.1 — the authoritative number changed twice |
+| matugen toggles, `SettingsSpec.js:940/943/952/955/994/1003` | **all six DRIFTED** | `1001-1003` Gtk, `1004-1006` Niri, `1013-1015` Qt5ct, `1016-1018` Qt6ct, `1055-1057` Neovim, `1064-1066` Kcolorscheme. The `def:` **values are all correct**, and "exactly one scalar `def: false` among the `matugenTemplate*` entries" is CONFIRMED (27 such keys in all: 26 carry a boolean `def`, and `matugenTemplateNeovimSettings` at `:1076` carries a compound object default) — `matugenTemplateNeovim` at `:1055` |
+| `settingsConfigVersion`, `SettingsData.qml:24` | **line CONFIRMED, value is NOT 33** | line `:24` is right; see §3.9 — the number moved twice, and not in one direction |
 | migration chain `31` then `33`, `SettingsStore.js:700` / `:706` | `:700` **DRIFTED (+1)** → `:701`; `:706` **NOT FOUND** | there is **no `configVersion = 33` anywhere**; the chain is `… 30 → 31 → 35`, and `:707` is `configVersion = 35` |
 | `add-wants niri.service dms`, `base.go:574` | CONFIRMED | exact |
 | headless terminal defaults to ghostty, `commands_setup_headless.go:128-131` | CONFIRMED | exact; file is **148 lines** |
@@ -127,7 +127,9 @@ Built with the released **`bluebuild 0.9.37`**
    whose values are strings), which `{source: X}` satisfies.
 
 3. **`post_build.sh` clearing `/var` — CONFIRMED, at a different path.**
-   `cli/scripts/post_build.sh`, not `template/src/…`. Line **22** is a **single**
+   `scripts/post_build.sh` at the repository root of `blue-build/cli` — not under
+   `template/src/`, and with no `cli/` prefix (that repository *is* the CLI
+   crate). Line **22** is a **single**
    command `rm -rf /tmp/* /var/* /opt`, and line **23** then recreates
    `/opt` as a symlink to `/var/opt`. The marker in `/var` does not survive; the
    mask symlink under `/etc` does. Criterion 2c is therefore written against the
@@ -147,7 +149,8 @@ Rule 2's exception, recorded as it requires:
   `self.module_type.version().unwrap_or("latest")` — so a bare `type: script`
   follows `latest` straight to a future `@v3`. Line number in the plan: exact.
 - `script` is one of **exactly two** multi-major BlueBuild types; the other is
-  `default-flatpaks`, which this recipe does not use. The other 21 module types
+  `default-flatpaks`, which this recipe does not use. The repository holds 24
+  module directories and exactly 2 carry a `versions:` list, so the other 22
   are unversioned, so their bare form is already `@v1` and cannot drift —
   `dnf`, `files`, `systemd` and `os-release` are therefore left bare.
 - What actually differs between v1 and v2 (read from
@@ -665,14 +668,27 @@ The plan's value is **33**, read 2026-09-30 from the git tree. Re-reading
 source is **the `dms` the image actually installs**, and the plan is explicit
 that this is where to read it — the git tree is not what ships.
 
-Read from the COPR package this build installs, `dms-1.6.2-1.fc44`:
+Read from the COPR package this build installs, `dms-1.6.2-1.fc44` — reproduced
+here so the number is checkable rather than asserted:
 
-```
-/usr/share/quickshell/dms/Common/SettingsData.qml:19
-    readonly property int settingsConfigVersion: 18
+```console
+$ podman run --rm --user 0 docker.io/library/fedora:44 bash -c '
+    dnf -y install dnf-plugins-core >/dev/null 2>&1
+    dnf -y copr enable avengemedia/dms >/dev/null 2>&1
+    dnf -y install dms
+    rpm -q dms
+    F=/usr/share/quickshell/dms/Common/SettingsData.qml
+    grep -n settingsConfigVersion "$F"
+    grep -n "configVersion = " /usr/share/quickshell/dms/Common/settings/SettingsStore.js | tail -3'
+
+dms-1.6.2-1.fc44.x86_64
+19:    readonly property int settingsConfigVersion: 18
+493:        settings.configVersion = 17;
+    493:        settings.configVersion = 17;
 ```
 
-and that package's migration chain tops out at `configVersion = 18`, not 33.
+so the installed package's migration chain tops out at `configVersion = 18`, not
+33 — there is no step above it in that release.
 
 **Shipped value: `18`.** Written into
 `/etc/skel/.config/DankMaterialShell/settings.json` and recorded here, because the
@@ -875,6 +891,27 @@ being left, and a date tag is only a record — the digest is what resolves.
 | Published digest | *the digest `skopeo inspect` returns **after** the push; `skopeo copy` rewrites the layers, so the local manifest digest is not the one the registry serves* |
 
 ### What was verified here, and what was not
+
+### Deviations from the plan's own CI text, and why
+
+- **`--skip-validation` on the build job's `bluebuild build`.** §6's job-2
+  command does not carry it. It is deliberate and harmless: the `validate` job
+  already ran `bluebuild validate` on the same commit and the build job is
+  `needs: validate`, so the re-check would be a duplicate network round-trip to
+  `schema.blue-build.org` for no new information. It is recorded here because the
+  plan's §6 command is quoted exactly and this is a change to it. The flag is
+  real (`cli/src/commands/build.rs:190-193`), not invented.
+- **Two install steps the plan does not mention at all**: BlueBuild is pinned and
+  installed in the `validate` and `build` jobs, and cosign is pinned and installed
+  in the `publish` job. Neither tool is present on a GitHub runner, so without
+  them the workflow fails at its first command. Both are pinned — bluebuild by
+  image **digest** and asserted by version string, cosign by version and checked
+  against the checksum upstream publishes beside the release.
+- **`docker run` rather than a bare `dnf` in `monitor-fedora.yml`.** An
+  `ubuntu-latest` runner has no dnf, so the probe runs inside a `fedora:44`
+  container. Verified locally: it reports `dms` and `dms-greeter` still resolving
+  from the COPR, `DankMaterialShell` already in Fedora, and `landed=false` — so
+  the job correctly declines to open an issue today.
 
 Verified by execution on this machine:
 
