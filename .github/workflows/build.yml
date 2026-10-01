@@ -98,9 +98,19 @@ jobs:
       # Gate 1 of 4 on the image (criterion 28). `niri validate` is not runnable
       # bare: the binary is absent from a GitHub runner, and a host-side call
       # would not see the image's config anyway.
+      #
+      # --pull=never on EVERY gate below, and it is not about the network.
+      # bluebuild leaves a manifest list on `ghcr.io/<owner>/<repo>:latest` plus
+      # the platform instance as `:latest_<arch>`, and a bare `podman run` on the
+      # manifest-list tag goes to the REGISTRY to resolve it. On the first run
+      # that is a 403 — the package does not exist yet. On every later run it
+      # is worse than an error: podman resolves the manifest against the registry
+      # and runs the PREVIOUSLY PUBLISHED image, so the gates would go green on
+      # the last good build while the fresh one is broken. A gate must test what
+      # was just built, and only what was just built.
       - name: niri validate inside the image
         run: |
-          podman run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             niri validate --config /etc/niri/config.kdl
 
       # Gate 2 of 4 (criterion 28). The only check that can see a `files`
@@ -109,7 +119,7 @@ jobs:
       # exits 0. Thirteen paths, one && chain, the §5.2 list in order.
       - name: files.yaml presence chain
         run: |
-          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/xdg/xdg-desktop-portal/portals.conf && test -f /etc/greetd/config.toml && test -f /etc/systemd/logind.conf.d/kinrin.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf && test -f /usr/lib/systemd/user/niri-vrr.service && test -f /etc/environment.d/90-dms.conf && test -f /usr/share/dms/cli-policy.json && test -f /etc/skel/.config/niri/local.kdl && test -f /etc/skel/.config/DankMaterialShell/settings.json'
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/xdg/xdg-desktop-portal/portals.conf && test -f /etc/greetd/config.toml && test -f /etc/systemd/logind.conf.d/kinrin.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf && test -f /usr/lib/systemd/user/niri-vrr.service && test -f /etc/environment.d/90-dms.conf && test -f /usr/share/dms/cli-policy.json && test -f /etc/skel/.config/niri/local.kdl && test -f /etc/skel/.config/DankMaterialShell/settings.json'
 
       # Gate 3 of 4 (criterion 28b) + the two greps the prompt adds (§5). Read the
       # signing policy out of the image rather than asserting it: an absent policy
@@ -117,9 +127,9 @@ jobs:
       # goes to stderr and the jq below cannot fail on it.
       - name: Read the signing policy out of the built image
         run: |
-          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
-          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/containers/policy.json || exit 1'
-          podman run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/containers/policy.json || exit 1'
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             jq -r '.transports.docker | keys[]' /etc/containers/policy.json
           # ASSERT, do not merely print. The policy key is the recipe `name:`
           # joined to the build registry, while the push target is
@@ -127,14 +137,14 @@ jobs:
           # image ships a verification policy covering a reference nothing
           # publishes, and boot-time verification of the published image resolves
           # nothing. Printing the key would have passed on a mismatch; this fails.
-          podman run --rm "ghcr.io/${REPO,,}:latest" sh -c \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c \
             'jq -e --arg r "ghcr.io/${REPO,,}" ".transports.docker | has(\$r)" /etc/containers/policy.json'
 
       - name: os-release carries ID=kinrin and ID_LIKE=fedora
         run: |
-          podman run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             grep -qE '^ID="?kinrin"?$' /etc/os-release
-          podman run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             grep -qE '^ID_LIKE="?fedora"?$' /etc/os-release
 
       # Hand the image to the publish job. Each job gets a FRESH runner, so
