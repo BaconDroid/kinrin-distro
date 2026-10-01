@@ -399,6 +399,18 @@ jobs:
       - name: Assert the digest is non-empty
         run: test -n "${{ steps.digest.outputs.digest }}"
 
+      # cosign does not read the auth file `skopeo login` writes. skopeo uses
+      # containers-image's `$XDG_RUNTIME_DIR/containers/auth.json`; cosign looks
+      # in `$DOCKER_CONFIG/config.json`. Without this the sign step got as far as
+      # `Pushing signature to:` and then failed with `UNAUTHORIZED:
+      # unauthenticated: User cannot be authenticated with the token provided` --
+      # on a push that had just succeeded with skopeo's own credentials, for the
+      # same registry, in the same job.
+      - name: Log in to GHCR for cosign
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
       - name: Sign
         env:
           # In the step `env:` block, NOT as an inline shell prefix: a generated

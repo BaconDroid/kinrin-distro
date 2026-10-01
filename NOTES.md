@@ -1154,6 +1154,22 @@ it listed `ghcr.io/bacondroid/kinrin-distro` as a key, with
 container ever sees the argument. Worth recording because the failure presented as
 a build problem and was not one.
 
+### cosign does not read skopeo's credentials
+
+The push succeeded, the digest was captured, and the sign step failed:
+
+```
+Pushing signature to: ghcr.io/bacondroid/kinrin-distro
+Error: signing [...]: signing digest: failed to upload layer: POST
+https://ghcr.io/v2/bacondroid/kinrin-distro/blobs/uploads/: UNAUTHORIZED:
+unauthenticated: User cannot be authenticated with the token provided.
+```
+
+Two different credential stores in one job. `skopeo login` writes
+containers-image's `$XDG_RUNTIME_DIR/containers/auth.json`; cosign reads
+`$DOCKER_CONFIG/config.json`. The publish job now also runs `docker login`, which
+both tools read.
+
 ### The handover no longer round-trips through a podman store
 
 `podman load` in the publish job succeeded, and the very next step failed:
