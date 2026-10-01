@@ -395,6 +395,33 @@ To rebuild or re-publish without touching the key at all, dispatch CI directly:
 gh workflow run build.yml --repo BaconDroid/kinrin-distro
 ```
 
+## When CI runs
+
+`build.yml` triggers on a push that touches a **build input** only:
+
+| Path | Why |
+|---|---|
+| `recipes/**` | the recipe and its eight modules |
+| `files/**` | the 13 staged files |
+| `cosign.pub` | what the `signing` module signs with |
+| `.github/workflows/build.yml` | the pipeline itself |
+
+A documentation-only push does not rebuild. Before this filter, fixing a typo
+spent a full container build, republished `:latest`, and minted a release whose
+digest differed from the previous one — several publications of the same
+operating system wearing different digests, which is the exact ambiguity a
+digest exists to remove.
+
+Two triggers are deliberately **not** filtered:
+
+- the **monthly schedule**, because its whole purpose is to notice the unpinned
+  `:latest` base moving underneath us, which involves no commit at all;
+- **`workflow_dispatch`**, so a rebuild is always one click away.
+
+The filter is silent when it is wrong: a build input added outside these four
+paths simply stops rebuilding, and the symptom reads as "CI is flaky" rather
+than "a path is missing". If you add an input, add it here too.
+
 ## Releases
 
 A GitHub Release is created automatically whenever `build.yml` goes green. It is
