@@ -1342,3 +1342,34 @@ in use carries `gist, read:org, repo, workflow` and **no packages scope**, so
 `gh api` on the package endpoint is refused (`You need at least read:packages
 scope`). That is an environment limit, stated here rather than presented as a
 step that was tried and worked.
+
+## 6. Published and verified
+
+Run `36821596275` — `validate`, `build` and `publish` all green — published and
+signed the image, and it was then checked from outside CI:
+
+```sh
+skopeo inspect --format '{{.Digest}}' docker://ghcr.io/bacondroid/kinrin-distro:latest
+cosign verify --key cosign.pub "ghcr.io/bacondroid/kinrin-distro@<that digest>"
+podman pull docker://ghcr.io/bacondroid/kinrin-distro:latest
+podman run --rm <image> sh -c 'niri validate --config /etc/niri/config.kdl'
+```
+
+What that established, in order:
+
+- the digest for that run was
+  `sha256:4f386308575ee33fd135dc03a2a78abb6fee9d5294d17b4b4d4ceeaa3a27e655`, and
+  both `latest` and `2026-10-01` resolved to it;
+- `cosign verify` passed all three checks: the cosign claims, the transparency-log
+  entry, and the signature against the committed `cosign.pub`;
+- a deliberately falsified digest was **rejected**, which is the part that
+  matters — a verification that cannot fail proves nothing;
+- the pulled image runs: `ID="kinrin"`, `ID_LIKE="fedora"`, `niri` reports
+  `config is valid`, and `/etc/containers/policy.json` carries the
+  `ghcr.io/bacondroid/kinrin-distro` key. The `optional include not found` warnings
+  are the `optional=true` includes, absent on a fresh system by design.
+
+**The digest above is that run's, and it is not a constant.** Every green run
+republishes and moves `:latest` and the dated tag, and the workflow has no path
+filter, so any push to `main` rebuilds. The authoritative digest is always the one
+captured in the run's own summary — never a value copied out of this file.
