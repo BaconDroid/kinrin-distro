@@ -1007,14 +1007,37 @@ Verified by execution on this machine:
 - Criterion 22 (no gamepad) and criterion 15 (no target Intel GPU) — both stay
   open, as §10 has them.
 - The `cosign` key pair itself: `cosign generate-key-pair` was **blocked by the
-  host's secret-path safety guard**, which refuses access to `*.key`. Per the
-  guard's instruction nothing was retried and no workaround was attempted. So
-  `cosign.pub` is **not** committed in this tree, and the `signing` module — which
-  exits 1 at the **last** module without it, after the 20-minute build — is
-  therefore **not** exercised by the local build below. **Generating the pair is a
-  prerequisite of the first publication, not a build step** (§2.4), so this does
-  not change the recipe; it does mean the local run proves seven of the eight
+  host's secret-path safety guard**, which refuses access to `*.key` paths. Per
+  the guard's own instruction — "do not retry this operation or attempt any
+  workaround" — nothing was retried and nothing was worked around. So `cosign.pub`
+  is **not** in this tree, and the `signing` module — which exits 1 at the
+  **last** module without it, after the whole 20-minute build — is therefore
+  **not** exercised by the local build below. Generating the pair is a
+  prerequisite of the first publication, not a build step (§2.4), so this changes
+  nothing in the recipe; it does mean the local run proves seven of the eight
   module files, and that is stated rather than glossed.
+
+  **The mechanism is visible in the generated Containerfile, not inferred.**
+  `bluebuild generate` produced the nine module RUNs in the order §5 requires —
+  `dnf`, `script` (flatpak), `files`, `systemd`, `script` (niri-config),
+  `script` (theme), `script` (orca), `os-release`, `signing`, the last being the
+  inline entry — and the key stage came out **empty**:
+
+  ```dockerfile
+  FROM scratch AS stage-keys
+  # Main image
+  ```
+
+  No `COPY cosign.pub /keys/kinrin-distro.pub`, because `has_cosign_file()`
+  (`template/src/lib.rs:100-103`) found no `cosign.pub` in the working directory.
+  The build therefore reaches the last module, finds nothing at
+  `/etc/pki/containers/kinrin-distro.pub`, and exits 1 at
+  `modules/signing/signing.sh:25-27`. That is the failure the plan predicts, and
+  it is a property of the generated Containerfile rather than a prediction about
+  it. The generated Containerfile also carries the three `stage-files` /
+  `dst=/tmp/files,rw` mounts and all thirteen `files.yaml` pairs, which is the
+  other unpinned BlueBuild fact from §1.2 seen in the output rather than in the
+  source.
 - Consequently the local preflight build was run with `- type: signing` removed,
   so the other eight modules could be exercised end to end. That removal is a
   **local test artefact only**: `recipes/recipe.yaml` in this repository keeps
