@@ -1433,10 +1433,17 @@ PackageKit-Qt6-1.1.4-4.fc44       the Qt LIBRARY, not the engine
 /usr/libexec/packagekitd          ABSENT
 ```
 
-`plasma-discover` pulls in only the Qt library; the `packagekit` daemon is a
-separate package and nothing else in the image required it. Discover therefore
-opened with no backend and would have returned nothing. `packagekit` is now
-installed, and the repositories it searches were verified present and enabled:
+`plasma-discover` pulls in only the Qt library; the engine is a separate package
+and nothing else in the image required it. Discover therefore opened with no
+backend and would have returned nothing.
+
+The fix was NOT a package called `packagekit` — I wrote that, and it failed the
+build with `No match for argument: packagekit`. RPM names are case-sensitive and
+the daemon is `PackageKit`; the correct package for KDE Discover is
+`plasma-discover-packagekit`, which requires `PackageKit` and pulls it in. Found
+by querying the repositories, not by guessing the second time.
+
+The repositories Discover searches were verified present and enabled:
 
 `fedora`, `updates`, `rpmfusion-free`, `rpmfusion-free-updates`,
 `rpmfusion-nonfree`, `rpmfusion-nonfree-updates`, `updates-archive`, and the

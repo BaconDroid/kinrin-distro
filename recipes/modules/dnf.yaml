@@ -15,11 +15,15 @@ install:
     - konsole
     - kate
     - plasma-discover
-    # packagekit is the engine Discover queries. Without it Discover is installed
-    # and inert: `plasma-discover` pulls in only the Qt library (PackageKit-Qt6),
-    # never the `packagekit` daemon, so /usr/libexec/packagekitd is absent and a
-    # search returns nothing. Measured on the previous image, not assumed.
-    - packagekit
+    # Discover was installed and inert: it pulls in only the Qt library
+    # (PackageKit-Qt6), never an engine, so /usr/libexec/packagekitd was absent and
+    # a search returned nothing. Measured on the previous image, not assumed.
+    #
+    # The package is `plasma-discover-packagekit`, NOT `packagekit`: RPM names are
+    # case-sensitive and the daemon itself is `PackageKit`, which is why a
+    # lower-case `packagekit` failed the build with "No match for argument". This
+    # one requires PackageKit, so it brings the daemon with it.
+    - plasma-discover-packagekit
     - plasma-workspace
     - plasma-workspace-common
     - kwin

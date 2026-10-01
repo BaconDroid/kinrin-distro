@@ -25,7 +25,7 @@ greetd ──▶ dms-greeter
 |---|---|
 | Session | `niri` + `dms-greeter` login screen |
 | Theming | Dracula (dark) and Alucard (light) in one `theme.json`, applied through DMS and propagated by matugen; Breeze stays underneath as the fallback for anything a colour scheme does not reach |
-| Apps | Dolphin, Konsole, Kate, Discover (backed by `packagekit`) |
+| Apps | Dolphin, Konsole, Kate, Discover (backed by `plasma-discover-packagekit`) |
 | Games | `steam` + `steam-devices` from RPM Fusion; on-demand VRR for `steam_app_*` windows |
 | Chat | **not preinstalled** — `sudo dnf install discord` |
 | Dev | podman, ripgrep, fish, zsh. **No compiler toolchain** — see [What is not in the box](#what-is-not-in-the-box) |
@@ -48,10 +48,12 @@ fetched a GitHub release RPM — so the module has to be restored to bring it ba
 `NOTES.md` records the exact steps.
 
 **Discover does work**, which is the point of removing them by hand rather than
-pruning the repos: `plasma-discover` alone is inert, because it pulls in only the
-Qt library and never the `packagekit` daemon. The image now installs `packagekit`,
-so the GUI can search `fedora`, `rpmfusion-free`, `rpmfusion-nonfree` and the
-`dms` COPR. Steam, Discord and the rest are all reachable that way.
+pruning the repos. `plasma-discover` alone is inert: it pulls in only the Qt
+library, never an engine, so `/usr/libexec/packagekitd` was absent and a search
+returned nothing. The image now installs `plasma-discover-packagekit`, which
+requires `PackageKit` and so brings the daemon with it. The repositories it
+searches were verified enabled: `fedora`, `rpmfusion-free`, `rpmfusion-nonfree`
+and the `dms` COPR. Steam, Discord and the compilers are all reachable that way.
 
 ## Install
 
