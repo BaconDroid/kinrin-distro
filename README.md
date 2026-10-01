@@ -27,33 +27,26 @@ greetd ──▶ dms-greeter
 | Theming | Dracula (dark) and Alucard (light) in one `theme.json`, applied through DMS and propagated by matugen; Breeze stays underneath as the fallback for anything a colour scheme does not reach |
 | Apps | Dolphin, Konsole, Kate, Discover (backed by `plasma-discover-packagekit`) |
 | Games | `steam` + `steam-devices` from RPM Fusion; on-demand VRR for `steam_app_*` windows |
-| Chat | **not preinstalled** — `sudo dnf install discord` |
-| Dev | podman, ripgrep, fish, zsh. **No compiler toolchain** — see [What is not in the box](#what-is-not-in-the-box) |
-| Editor | **not preinstalled** — Dolphin is the file manager; orca is one command, see below |
+| Chat | `discord` from RPM Fusion, screen sharing through the KDE portal |
+| Dev | Node, Go, Rust, Python, C/C++, podman, ripgrep, fish, zsh |
+| Editor | orca, installed from its GitHub release RPM |
 | Flatpak | the `flatpak` package is present but no remote is enabled |
 
-### What is not in the box
+### Nothing is missing from the box
 
-Some things were removed so the ISO fits under GitHub's 2 GiB release-asset cap.
-All of it is one command away, and the repositories are already enabled:
+An earlier revision stripped Discord, Orca and the compiler toolchain to try to
+fit the ISO under GitHub's 2 GiB release-asset cap. It was measured and reverted:
+those packages total about 140 MB compressed against a 2.7 GiB gap, and Steam's
+~1 GB client downloads on first launch rather than being embedded, so trimming it
+saved nothing while removing the main reason the image exists. `NOTES.md` §7 and §8
+record the measurements.
 
-```sh
-sudo dnf install discord                          # rpmfusion-nonfree
-sudo dnf install @development-tools rust cargo    # compilers, rust, cargo
-sudo dnf install golang nodejs npm python3-pip git-lfs golangci-lint
-```
-
-`orca` is the exception: it never came from a repository — `recipes/modules/orca.yaml`
-fetched a GitHub release RPM — so the module has to be restored to bring it back.
-`NOTES.md` records the exact steps.
-
-**Discover does work**, which is the point of removing them by hand rather than
-pruning the repos. `plasma-discover` alone is inert: it pulls in only the Qt
-library, never an engine, so `/usr/libexec/packagekitd` was absent and a search
-returned nothing. The image now installs `plasma-discover-packagekit`, which
-requires `PackageKit` and so brings the daemon with it. The repositories it
-searches were verified enabled: `fedora`, `rpmfusion-free`, `rpmfusion-nonfree`
-and the `dms` COPR. Steam, Discord and the compilers are all reachable that way.
+One improvement from that pass was kept: **Discover needed a backend.**
+`plasma-discover` pulls in only the Qt library, never an engine, so
+`/usr/libexec/packagekitd` was absent and a search returned nothing. The image now
+installs `plasma-discover-packagekit`, which requires `PackageKit` and brings the
+daemon in. It is not called `packagekit` — RPM names are case-sensitive, and that
+typo failed a build before it was found by querying the repositories.
 
 ## Install
 
@@ -240,7 +233,7 @@ repository — see the note above for its current state.
 
 ```
 recipes/recipe.yaml           the recipe; its modules are the only place the image content is declared
-recipes/modules/*.yaml        one file per from-file: entry — seven of them
+recipes/modules/*.yaml        one file per from-file: entry — eight of them
 files/                        the files module's data tree, one entry per file it ships
 .github/workflows/            build.yml, and the monthly monitor-fedora.yml
 TESTING.md                    the manual criteria, to run on a real machine
@@ -424,7 +417,7 @@ gh workflow run build.yml --repo BaconDroid/kinrin-distro
 
 | Path | Why |
 |---|---|
-| `recipes/**` | the recipe and its seven modules |
+| `recipes/**` | the recipe and its eight modules |
 | `files/**` | the 13 staged files |
 | `cosign.pub` | what the `signing` module signs with |
 | `.github/workflows/build.yml` | the pipeline itself |
@@ -523,7 +516,7 @@ order matters as much as the content.
 
 1. **`cosign.pub` must be in the tree before the first CI run.** It is a build
    input, not documentation. Without it the `signing` module — the *last* of the
-   last of seven — exits 1, and the full build is spent before you find out.
+   last of eight — exits 1, and the full build is spent before you find out.
 2. **Run `~/Projects/kinrin-publish.sh` as a script, never pasted into a shell.**
    It uses `set -uo pipefail` and an explicit `die()` rather than `set -e`, so a
    failure stops the sequence at a known point. Pasting it does not close the tab

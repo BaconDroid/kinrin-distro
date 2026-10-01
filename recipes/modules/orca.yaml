@@ -1,0 +1,14 @@
+type: script@v2
+snippets:
+  # §4.11. The RPM, never the AppImage: the AppImage mounts in the home on
+  # every launch. `releases/latest` already excludes drafts and prereleases, so
+  # nothing is pinned (rule 2). ONE snippet entry, not three: the v2 runner
+  # starts each entry in its own `/bin/sh -c 'set -eu; …'` subshell, so $url
+  # set in one entry is gone in the next. No pipefail: not POSIX, and every
+  # failure mode here already collapses to an empty $url.
+  - |
+    url=$(curl -fsSL https://api.github.com/repos/stablyai/orca/releases/latest \
+      | jq -r '.assets[].browser_download_url' | grep -E 'x86_64\.rpm$' | head -n1) \
+      && test -n "$url" \
+      && case "$url" in https://github.com/stablyai/orca/releases/download/*) ;; *) exit 1 ;; esac \
+      && dnf install -y "$url"

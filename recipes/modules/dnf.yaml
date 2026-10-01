@@ -9,61 +9,48 @@ install:
     - niri
     - dms
     - quickshell
+    - gdb
     - dms-greeter
     - greetd
     - dolphin
     - konsole
     - kate
     - plasma-discover
-    # Discover was installed and inert: it pulls in only the Qt library
-    # (PackageKit-Qt6), never an engine, so /usr/libexec/packagekitd was absent and
-    # a search returned nothing. Measured on the previous image, not assumed.
-    #
-    # The package is `plasma-discover-packagekit`, NOT `packagekit`: RPM names are
-    # case-sensitive and the daemon itself is `PackageKit`, which is why a
-    # lower-case `packagekit` failed the build with "No match for argument". This
-    # one requires PackageKit, so it brings the daemon with it.
+    # Discover is inert without an engine: it pulls in only the Qt library
+    # (PackageKit-Qt6), never a backend, so /usr/libexec/packagekitd is absent and
+    # a search returns nothing. Verified on the built image, not assumed.
+    # NOT `packagekit`: RPM names are case-sensitive, the daemon is `PackageKit`,
+    # and this is the package KDE Discover actually uses -- it requires PackageKit
+    # and brings it in.
     - plasma-discover-packagekit
     - plasma-workspace
     - plasma-workspace-common
     - kwin
     - libva-intel-media-driver
     - libva-utils
-    # Kept at the user's request. `steam-devices` is not optional decoration:
-    # criterion 22 is a Steam gamepad crash, and without this package no gamepad
-    # is recognised at all, so the criterion cannot even be run. Steam is also
-    # the reason this image exists more than anything else in it.
     - steam
     - steam-devices
+    - discord
     - xwayland-satellite
     - jq
     - acl
     - curl
     - git
+    - nodejs
     - python3
     - podman
-    # Kept deliberately: ripgrep, fish and zsh are user-facing tools, not a
-    # toolchain, and removing them would change the desktop rather than shrink
-    # the installer.
+    - gcc
+    - make
+    - cmake
+    - rust
+    - cargo
     - ripgrep
     - fish
     - zsh
-
-# REMOVED, and how to put them back. Every one of these is available from a
-# repository that is already enabled in this image, so none of them needs the
-# recipe to come back -- see NOTES.md and README for the exact command.
-#
-#   discord                      ~0.2 GiB installed
-#       Re-add:  sudo dnf install discord
-#       Repos:   rpmfusion-nonfree (already enabled)
-#
-#   gdb, gcc, make, cmake         ~0.4 GiB installed
-#   nodejs, npm, python3-pip      ~0.1 GiB
-#   rust, cargo, rust-std*, rustfmt, rust-analyzer ~0.6 GiB
-#   golang, git-lfs, golangci-lint ~0.4 GiB
-#       Re-add:  sudo dnf install @development-tools rust cargo golang nodejs npm \
-#                     python3-pip git-lfs golangci-lint
-#
-# They came out for one reason only: the ISO did not fit under GitHub's 2 GiB
-# release-asset cap. Nothing about the desktop, the greeter or the session
-# depends on them, and none of them is part of the plan's module list.
+    - npm
+    - python3-pip
+    - golang
+    - git-lfs
+    - rustfmt
+    - rust-analyzer
+    - golangci-lint

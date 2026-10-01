@@ -1380,98 +1380,46 @@ filter, so any push to `main` rebuilds. The authoritative digest is the one the
 publish job prints in its log, in the `Capture digest` step — never a value copied
 out of this file.
 
-## 7. What was removed to fit the ISO under GitHub's release cap
+## 7. A trim that was measured, then reverted
 
-GitHub caps a release asset at **2 GiB** (`docs.github.com/…/about-releases`:
-"Each file included in a release must be under 2 GiB"). The OCI archive is 4.2 GiB,
-so it can never be a release asset — that is not a compression problem and no
-amount of shrinking the manifest changes it.
+An intermediate revision removed Discord, the Orca module and the whole compiler
+toolchain to try to fit the ISO under GitHub's 2 GiB release-asset cap. It was
+reverted after measurement, and the measurements are worth keeping because they
+close off a whole class of ideas:
 
-What *does* decide the ISO is the uncompressed rootfs: BlueBuild's `generate-iso`
-hands the image to `ghcr.io/jasonn3/build-container-installer:v1.5.0`, which
-squashes the rootfs itself (`utils/src/constants.rs:119`). So the size to attack is
-`/usr`, measured on the image rather than estimated:
+| Candidate | Raw | **Real gain, zstd** |
+| --------- | --- | -------------------- |
+| Locales (617 Mo, 699 languages) → `en`+`fr` | 591 Mo | ~110 Mo |
+| `man` (8 877 pages, already `.gz`) | 43 Mo | ~19 Mo |
+| `steam` + `steam-devices` (20 Mo of RPM) | 20 Mo | ~10 Mo |
+| kde/plasma in full | 748 Mo | ~250 Mo |
 
-| Directory                     | Size   |
-| ----------------------------- | ------ |
-| `/usr/lib`                      | 3.1 G  |
-| `/usr/share`                    | 2.7 G  |
-| `/usr/lib64`                    | 2.5 G  |
-| `/usr/bin`                      | 1.1 G  |
-| `/usr/share/locale` (699 langs) | 618 M  |
+Everything at once is ~650 Mo against a **2 740 Mo** gap. There is no path to
+2 GiB that leaves a working desktop in place.
 
-### Removed
+Two findings that generalise:
 
-| Package                                  | Installed | Why |
-| ---------------------------------------- | --------- | --- |
-| `discord`                                  | ~0.2 G   | size; one `dnf install` away |
-| the whole dev toolchain (`gcc`, `cmake`, `make`, `rust`, `cargo`, `golang`, `nodejs`, `npm`, `python3-pip`, `gdb`, `rustfmt`, `rust-analyzer`, `golangci-lint`, `git-lfs`) | ~1.5 G | size; a desktop image does not need to compile |
-| `orca` (whole module)                      | 585 M    | size, **and** not re-installable with `dnf` |
+- **Steam is nearly free in the image.** The RPMs total 20 Mo; the ~1 Go client
+  is downloaded on first launch. Removing it saved ~10 Mo and removed the main
+  reason the image exists.
+- **Raw sizes mislead.** Locales compress 617 Mo down to 161 Mo, so keeping 25 Mo
+  buys ~110 Mo, not the 591 Mo the raw number suggests. Anything proposed as a
+  size reduction must be measured *compressed*, with the codec the artefact
+  actually uses.
 
-`orca.yaml` fetched a **GitHub release RPM**, not a repository package. Removing it
-removed the module from the recipe, so bringing it back is not a `dnf install`:
+A "download the locales during installation" script was also proposed and
+rejected on grounds independent of size: it breaks offline installation, is not
+idempotent, and buys nothing since `glibc-langpack-fr` is already in the enabled
+repositories.
 
-```sh
-git checkout <ref> -- recipes/modules/orca.yaml
-# then re-add "  - from-file: modules/orca.yaml" to recipe.yaml, after theme.yaml
-```
+### What survived from that pass
 
-### Deliberately kept: `steam` and `steam-devices`
-
-Kept on request, and the second one is not decoration: criterion 22 exists to check
-a Steam gamepad crash, and without `steam-devices` no gamepad is enumerated at
-all, so the criterion cannot be run. Everything else went before Steam did.
-
-### `packagekit` added, because `plasma-discover` alone is inert
-
-The image already shipped `plasma-discover`, which suggested it could reinstall the
-removed packages. It could not:
-
-```
-plasma-discover-6.7.5-1.fc44      installed
-PackageKit-Qt6-1.1.4-4.fc44       the Qt LIBRARY, not the engine
-/usr/libexec/packagekitd          ABSENT
-```
-
-`plasma-discover` pulls in only the Qt library; the engine is a separate package
-and nothing else in the image required it. Discover therefore opened with no
-backend and would have returned nothing.
-
-The fix was NOT a package called `packagekit` — I wrote that, and it failed the
-build with `No match for argument: packagekit`. RPM names are case-sensitive and
-the daemon is `PackageKit`; the correct package for KDE Discover is
-`plasma-discover-packagekit`, which requires `PackageKit` and pulls it in. Found
-by querying the repositories, not by guessing the second time.
-
-The repositories Discover searches were verified present and enabled:
-
-`fedora`, `updates`, `rpmfusion-free`, `rpmfusion-free-updates`,
-`rpmfusion-nonfree`, `rpmfusion-nonfree-updates`, `updates-archive`, and the
-`avengemedia/dms` COPR. Discord, Firefox and the compilers are all reachable from
-Discover or from `dnf` without touching the recipe.
-
-Flatpak remains remote-less by design (§3.2), so Discover's flatpak side is
-empty; the DNF side is the one that works.
-
-### Rejected as a size lever, with reasons
-
-- **`--build-chunked-oci` (rechunk).** Not excluded by clap with `--archive` —
-  they share no group — but rechunk forces the **podman** driver
-  (`src/commands/build.rs:209`), and podman cannot tag the `oci-archive:` ref that
-  `--archive` produces. It is a real architectural conflict, not a flag. Bazzite
-  measures ~1 GiB from it, mostly as an *update*-size win.
-- **`install_weak_deps=False`.** Bazzite's dnf.conf sets it; on an image with a
-  greeter, `Recommends` can carry runtime pieces. Untested on real hardware here.
-- **Dropping `/var`.** Already 0 bytes: no flatpak, no DNF cache in the image, so
-  Bazzite's largest single lever does not apply to this recipe at all.
-
-### Correction to an earlier claim of mine
-
-I stated that the compressed OCI size (4.52 GB) was what decided DVD fit, with a
-3.8 % margin. That was wrong twice over: the ISO is built from the **uncompressed**
-rootfs, and the 4.7 GB DVD figure is decimal while 4.52 was not stated in the same
-units. The measured number comes from the `iso` job, which writes it to
-`$GITHUB_OUTPUT` and warns when it exceeds 2 GiB.
+**`plasma-discover-packagekit`.** `plasma-discover` pulls in only the Qt library,
+never an engine, so `/usr/libexec/packagekitd` was absent and a search returned
+nothing — Discover was installed and inert. The correct package is
+`plasma-discover-packagekit`, which requires `PackageKit` and pulls the daemon
+in; it is *not* `packagekit`, because RPM names are case-sensitive, and that
+typo failed a build before the repositories were queried.
 
 ## 8. The ISO: measured, and why it is not a release asset
 
