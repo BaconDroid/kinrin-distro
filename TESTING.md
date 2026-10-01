@@ -164,8 +164,11 @@ and the binary both link the root files.
       those two lines, **not** on `GPG check : enabled` — dnf5 never prints it.
       Note `dnf repoinfo <unknown-id>` prints `No matches found.` and still exits
       0, so a typo cannot fail this criterion on its own.
-- [ ] **25.** `discord` starts and its in-call screen sharing goes through the
-      portal.
+- [ ] **25.** ~~`discord` starts and its in-call screen sharing goes through the
+      portal.~~ **Not in the image** — Discord was removed for ISO size, after
+      measuring that Steam must stay. Re-add it first
+      (`sudo dnf install discord`), then this criterion applies unchanged; the
+      portal path it exercises is in the image either way.
 - [ ] **26.** `/etc/environment.d/90-dms.conf` is valid `KEY=VALUE` and
       `systemd-environment-d-generator` accepts it, and the three DMS variables
       are set in the `niri.service` and `dms.service` drop-ins **only** — no
@@ -177,9 +180,13 @@ and the binary both link the root files.
       starts under it. `steam` is not that test — the RPM is 64-bit, only its
       dependencies are 32-bit — so use criterion 9 for the X11 smoke test and
       this one for the package.
-- [ ] **29.** orca starts under niri, opens a worktree and renders its integrated
-      terminal; its RPM dependencies resolve in the image and it coexists with
-      `dms-greeter`. It is an Electron app, so GTK/sandbox behaviour depends on
+- [ ] **29.** ~~orca starts under niri, opens a worktree and renders its integrated
+      terminal~~ **Not in the image** — the module that installed it was removed for
+      ISO size, and it is the one removal that is not a `dnf install`, because it
+      came from a GitHub release RPM rather than a repository. Restore
+      `recipes/modules/orca.yaml` (steps in `NOTES.md`) before running this. Its
+      RPM dependencies resolve in the image either way, and it is an Electron app,
+      so GTK/sandbox behaviour depends on
       version. **opencode is not part of this criterion**: answering needs a model
       provider, credentials and a network, none of which the image supplies.
 - [ ] **30.** After a theme change and then

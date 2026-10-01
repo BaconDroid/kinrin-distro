@@ -1379,3 +1379,89 @@ republishes and moves `:latest` and the dated tag, and the workflow has no path
 filter, so any push to `main` rebuilds. The authoritative digest is the one the
 publish job prints in its log, in the `Capture digest` step — never a value copied
 out of this file.
+
+## 7. What was removed to fit the ISO under GitHub's release cap
+
+GitHub caps a release asset at **2 GiB** (`docs.github.com/…/about-releases`:
+"Each file included in a release must be under 2 GiB"). The OCI archive is 4.2 GiB,
+so it can never be a release asset — that is not a compression problem and no
+amount of shrinking the manifest changes it.
+
+What *does* decide the ISO is the uncompressed rootfs: BlueBuild's `generate-iso`
+hands the image to `ghcr.io/jasonn3/build-container-installer:v1.5.0`, which
+squashes the rootfs itself (`utils/src/constants.rs:119`). So the size to attack is
+`/usr`, measured on the image rather than estimated:
+
+| Directory                     | Size   |
+| ----------------------------- | ------ |
+| `/usr/lib`                      | 3.1 G  |
+| `/usr/share`                    | 2.7 G  |
+| `/usr/lib64`                    | 2.5 G  |
+| `/usr/bin`                      | 1.1 G  |
+| `/usr/share/locale` (699 langs) | 618 M  |
+
+### Removed
+
+| Package                                  | Installed | Why |
+| ---------------------------------------- | --------- | --- |
+| `discord`                                  | ~0.2 G   | size; one `dnf install` away |
+| the whole dev toolchain (`gcc`, `cmake`, `make`, `rust`, `cargo`, `golang`, `nodejs`, `npm`, `python3-pip`, `gdb`, `rustfmt`, `rust-analyzer`, `golangci-lint`, `git-lfs`) | ~1.5 G | size; a desktop image does not need to compile |
+| `orca` (whole module)                      | 585 M    | size, **and** not re-installable with `dnf` |
+
+`orca.yaml` fetched a **GitHub release RPM**, not a repository package. Removing it
+removed the module from the recipe, so bringing it back is not a `dnf install`:
+
+```sh
+git checkout <ref> -- recipes/modules/orca.yaml
+# then re-add "  - from-file: modules/orca.yaml" to recipe.yaml, after theme.yaml
+```
+
+### Deliberately kept: `steam` and `steam-devices`
+
+Kept on request, and the second one is not decoration: criterion 22 exists to check
+a Steam gamepad crash, and without `steam-devices` no gamepad is enumerated at
+all, so the criterion cannot be run. Everything else went before Steam did.
+
+### `packagekit` added, because `plasma-discover` alone is inert
+
+The image already shipped `plasma-discover`, which suggested it could reinstall the
+removed packages. It could not:
+
+```
+plasma-discover-6.7.5-1.fc44      installed
+PackageKit-Qt6-1.1.4-4.fc44       the Qt LIBRARY, not the engine
+/usr/libexec/packagekitd          ABSENT
+```
+
+`plasma-discover` pulls in only the Qt library; the `packagekit` daemon is a
+separate package and nothing else in the image required it. Discover therefore
+opened with no backend and would have returned nothing. `packagekit` is now
+installed, and the repositories it searches were verified present and enabled:
+
+`fedora`, `updates`, `rpmfusion-free`, `rpmfusion-free-updates`,
+`rpmfusion-nonfree`, `rpmfusion-nonfree-updates`, `updates-archive`, and the
+`avengemedia/dms` COPR. Discord, Firefox and the compilers are all reachable from
+Discover or from `dnf` without touching the recipe.
+
+Flatpak remains remote-less by design (§3.2), so Discover's flatpak side is
+empty; the DNF side is the one that works.
+
+### Rejected as a size lever, with reasons
+
+- **`--build-chunked-oci` (rechunk).** Not excluded by clap with `--archive` —
+  they share no group — but rechunk forces the **podman** driver
+  (`src/commands/build.rs:209`), and podman cannot tag the `oci-archive:` ref that
+  `--archive` produces. It is a real architectural conflict, not a flag. Bazzite
+  measures ~1 GiB from it, mostly as an *update*-size win.
+- **`install_weak_deps=False`.** Bazzite's dnf.conf sets it; on an image with a
+  greeter, `Recommends` can carry runtime pieces. Untested on real hardware here.
+- **Dropping `/var`.** Already 0 bytes: no flatpak, no DNF cache in the image, so
+  Bazzite's largest single lever does not apply to this recipe at all.
+
+### Correction to an earlier claim of mine
+
+I stated that the compressed OCI size (4.52 GB) was what decided DVD fit, with a
+3.8 % margin. That was wrong twice over: the ISO is built from the **uncompressed**
+rootfs, and the 4.7 GB DVD figure is decimal while 4.52 was not stated in the same
+units. The measured number comes from the `iso` job, which writes it to
+`$GITHUB_OUTPUT` and warns when it exceeds 2 GiB.

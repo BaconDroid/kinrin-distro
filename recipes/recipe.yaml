@@ -26,7 +26,16 @@ modules:
   - from-file: modules/systemd-system.yaml
   - from-file: modules/niri-config.yaml
   - from-file: modules/theme.yaml
-  - from-file: modules/orca.yaml
+  # REMOVED: modules/orca.yaml. Orca (585 MiB installed) came out with steam and
+  # discord so the ISO fits under GitHub's 2 GiB release-asset cap. It is the one
+  # removal that is NOT a `dnf install` away: orca.yaml fetched a GitHub release
+  # RPM, so there is no repo entry for it. To put it back, restore the module:
+  #
+  #   git checkout <ref> -- recipes/modules/orca.yaml
+  #   # re-add "- from-file: modules/orca.yaml" here, after theme.yaml
+  #
+  # Dolphin remains as the file manager, so the session is unaffected either way.
+  # Recorded in NOTES.md; noted here so the recipe alone explains its own shape.
   # §5 — last of the eight, so dnf and `dms setup` still read ID=fedora.
   - from-file: modules/os-release.yaml
   # §6.1 — contributes the verification policy the image ships, layered over an

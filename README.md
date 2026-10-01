@@ -25,12 +25,33 @@ greetd ──▶ dms-greeter
 |---|---|
 | Session | `niri` + `dms-greeter` login screen |
 | Theming | Dracula (dark) and Alucard (light) in one `theme.json`, applied through DMS and propagated by matugen; Breeze stays underneath as the fallback for anything a colour scheme does not reach |
-| Apps | Dolphin, Konsole, Kate, Discover |
+| Apps | Dolphin, Konsole, Kate, Discover (backed by `packagekit`) |
 | Games | `steam` + `steam-devices` from RPM Fusion; on-demand VRR for `steam_app_*` windows |
-| Chat | `discord` from RPM Fusion, screen sharing through the KDE portal |
-| Dev | Node, Go, Rust, Python, C/C++, podman, ripgrep, fish, zsh |
-| Editor | orca, installed from its GitHub release RPM |
-| Flatpak | the `flatpak` package is present (Discover needs its backend) but no remote is enabled |
+| Chat | **not preinstalled** — `sudo dnf install discord` |
+| Dev | podman, ripgrep, fish, zsh. **No compiler toolchain** — see [What is not in the box](#what-is-not-in-the-box) |
+| Editor | **not preinstalled** — Dolphin is the file manager; orca is one command, see below |
+| Flatpak | the `flatpak` package is present but no remote is enabled |
+
+### What is not in the box
+
+Some things were removed so the ISO fits under GitHub's 2 GiB release-asset cap.
+All of it is one command away, and the repositories are already enabled:
+
+```sh
+sudo dnf install discord                          # rpmfusion-nonfree
+sudo dnf install @development-tools rust cargo    # compilers, rust, cargo
+sudo dnf install golang nodejs npm python3-pip git-lfs golangci-lint
+```
+
+`orca` is the exception: it never came from a repository — `recipes/modules/orca.yaml`
+fetched a GitHub release RPM — so the module has to be restored to bring it back.
+`NOTES.md` records the exact steps.
+
+**Discover does work**, which is the point of removing them by hand rather than
+pruning the repos: `plasma-discover` alone is inert, because it pulls in only the
+Qt library and never the `packagekit` daemon. The image now installs `packagekit`,
+so the GUI can search `fedora`, `rpmfusion-free`, `rpmfusion-nonfree` and the
+`dms` COPR. Steam, Discord and the rest are all reachable that way.
 
 ## Install
 
@@ -217,7 +238,7 @@ repository — see the note above for its current state.
 
 ```
 recipes/recipe.yaml           the recipe; its modules are the only place the image content is declared
-recipes/modules/*.yaml        one file per from-file: entry — eight of them
+recipes/modules/*.yaml        one file per from-file: entry — seven of them
 files/                        the files module's data tree, one entry per file it ships
 .github/workflows/            build.yml, and the monthly monitor-fedora.yml
 TESTING.md                    the manual criteria, to run on a real machine
@@ -401,7 +422,7 @@ gh workflow run build.yml --repo BaconDroid/kinrin-distro
 
 | Path | Why |
 |---|---|
-| `recipes/**` | the recipe and its eight modules |
+| `recipes/**` | the recipe and its seven modules |
 | `files/**` | the 13 staged files |
 | `cosign.pub` | what the `signing` module signs with |
 | `.github/workflows/build.yml` | the pipeline itself |
@@ -464,7 +485,7 @@ order matters as much as the content.
 
 1. **`cosign.pub` must be in the tree before the first CI run.** It is a build
    input, not documentation. Without it the `signing` module — the *last* of the
-   eight — exits 1, and the full build is spent before you find out.
+   last of seven — exits 1, and the full build is spent before you find out.
 2. **Run `~/Projects/kinrin-publish.sh` as a script, never pasted into a shell.**
    It uses `set -uo pipefail` and an explicit `die()` rather than `set -e`, so a
    failure stops the sequence at a known point. Pasting it does not close the tab
@@ -480,7 +501,7 @@ order matters as much as the content.
    from the first command until the second.
 6. **Do not add a Dockerfile, an `image` module, or versioned module names.** The
    signing policy keys off the recipe's `name:` joined to the build registry, and
-   the eight modules are fixed in order with `signing` last.
+   the modules are fixed in order with `signing` last.
 7. **Check the package is publicly readable rather than assuming it.** GHCR
    creates packages private and a public repository does not change that.
 
