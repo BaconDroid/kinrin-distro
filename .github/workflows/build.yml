@@ -95,6 +95,32 @@ jobs:
             --registry ghcr.io --registry-namespace "${OWNER,,}" \
             --skip-validation recipes/recipe.yaml
 
+      # Make the freshly built image addressable under the ref the gates and the
+      # handover use. bluebuild reports `ghcr.io/<owner>/<repo>:latest` as built,
+      # but what it puts there is a MANIFEST LIST; the runnable platform image is
+      # the separate `:latest_<arch>` ref. A manifest-list ref is not directly
+      # runnable, and without --pull podman resolves it through the REGISTRY —
+      # which serves the PREVIOUS published image, so the gates would go green on
+      # the last good build while this one is broken. That is the exact false
+      # green the plan spends most of its length ruling out, so the ref is
+      # resolved here, once, explicitly.
+      #
+      # Fail-closed: if no platform instance is found, this step dies rather than
+      # leaving the gates to run against something unexpected.
+      - name: Resolve the built image to a runnable ref
+        run: |
+          set -euo pipefail
+          REF="ghcr.io/${REPO,,}/kinrin:latest"
+          PREFIX="ghcr.io/${REPO,,}/kinrin:"
+          SRC=$(podman images --format '{{.Repository}}:{{.Tag}}' \
+                  | grep -F "$PREFIX" | grep -E '_linux_amd64$' | head -1)
+          if [ -n "$SRC" ] && [ "$SRC" != "$REF" ]; then
+            podman tag "$SRC" "$REF"
+            echo "tagged platform instance $SRC -> $REF"
+          fi
+          podman run --rm --pull=never "$REF" true
+          podman images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -F "$PREFIX"
+
       # Gate 1 of 4 on the image (criterion 28). `niri validate` is not runnable
       # bare: the binary is absent from a GitHub runner, and a host-side call
       # would not see the image's config anyway.
