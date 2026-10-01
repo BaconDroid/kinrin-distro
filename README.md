@@ -445,6 +445,42 @@ The filter is silent when it is wrong: a build input added outside these four
 paths simply stops rebuilding, and the symptom reads as "CI is flaky" rather
 than "a path is missing". If you add an input, add it here too.
 
+## Download it
+
+Two different things, and the difference matters:
+
+| What | Where | Size |
+| ---- | ----- | ---- |
+| **Container image** | `ghcr.io/bacondroid/kinrin-distro` | 3.88 GB compressed |
+| **Bootable ISO** | the `iso` job's artifact, on each green run | 4.74 GiB |
+
+The image is the normal way to run it, and it is what the Release points at:
+
+```sh
+podman pull ghcr.io/bacondroid/kinrin-distro:latest
+```
+
+The ISO is generated automatically on every green build, from the **published**
+image rather than from the recipe — rebuilding would compile everything twice and
+could produce something other than what was gated and signed. It is a real
+bootable ISO (`CD001` at offset 32769, volume `kinrin-x86_64-latest`).
+
+**The ISO is not attached to the Release, and that is a GitHub limit, not an
+oversight.** GitHub caps a release asset at 2 GiB; the ISO is 4.74 GiB, so it
+ships as a workflow artifact instead. Download it with:
+
+```sh
+gh run download <run-id> -n kinrin-iso -D .
+```
+
+Each green run publishes one, and the run id is the release's own commit. The
+release job attaches the ISO automatically if it ever fits under the cap, and
+warns instead of failing after the release already exists.
+
+Three ways to get under 2 GiB, none of them attractive: split the ISO with
+`xorriso -split` and reassemble with `cat`; burn a dual-layer DVD (8.5 GB); or
+strip the desktop itself, which stops it being a desktop.
+
 ## Releases
 
 A GitHub Release is created automatically whenever `build.yml` goes green. It is
