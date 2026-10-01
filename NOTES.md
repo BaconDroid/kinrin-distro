@@ -1441,10 +1441,17 @@ since been reverted, so they are a floor rather than the current value:
 | GitHub release-asset cap | 2 GiB |
 | ISO structure | valid — `CD001` at offset 32769, volume `kinrin-x86_64-latest` |
 
-The structure and the mechanism are what this section is for, and both hold. The
-size does not: with Discord, Orca and the toolchain restored the ISO is larger
-again, so treat 4.74 GiB as the smallest it has been measured at, and read the
-live figure from the job output. The release job therefore publishes
+Re-measured on the restored full recipe, run `36920786901`:
+
+| Revision | ISO | artifact (zipped) |
+| -------- | --- | ----------------- |
+| trimmed (§7, reverted) | 5 092 212 736 B = 4.74 GiB | 5 050 159 141 B |
+| **full recipe, current** | 5 757 272 064 B = **5.36 GiB** | 5 712 607 966 B |
+
+So restoring Discord, Orca and the toolchain cost 0.62 GiB, and the guard behaved
+correctly: `attachable=false`, a warning, and a release carrying `cosign.pub`
+only — not a late failure with no explanation. The gap to the 2 GiB cap is now
+3.36 GiB. The release job therefore publishes
 `cosign.pub` only and says so with a warning, rather than calling
 `gh release create` with an oversized file — that would fail *after* the release
 exists, leaving a release with no ISO and no error to explain it.
