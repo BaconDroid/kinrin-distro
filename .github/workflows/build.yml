@@ -610,6 +610,19 @@ jobs:
           \`MAJOR.MINOR.PATCH\` — MAJOR is the Fedora release, MINOR the major version
           of dms, PATCH counts publications within that pair. The first three are
           read out of the built image, so they cannot drift from its contents.
+
+          ## Bootable ISO
+
+          Built from this exact image, not from a second build. GitHub caps a
+          release asset at 2 GiB and the ISO is larger, so it ships as an
+          artifact of this run instead of an attached file:
+
+          \`\`\`sh
+          gh run download ${GITHUB_RUN_ID} --repo ${REPO,,} -n kinrin-iso -D .
+          \`\`\`
+
+          Or open the run artifacts page directly:
+          https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID}
           EOF
 
           # Assets are passed as trailing arguments. The ISO is added only when it
