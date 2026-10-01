@@ -160,7 +160,7 @@ Rule 2's exception, recorded as it requires:
   `/bin/sh -c $'set -eu; ($snippet)'` — POSIX, `set -eu`, **no `pipefail`**.
   **Both run every snippet in a fresh interpreter, so a variable set in one entry
   does not survive into the next in either version.** That is why every
-  multi-command block in this recipe is a **single** `snippets:` entry — see §3.1.
+  multi-command block in this recipe is a **single** `snippets:` entry — see §3.3.
 
 ### 1.4 Which branch of the `dms-greeter` `%post` SELinux block ran
 
@@ -232,7 +232,7 @@ at runtime (`base.go:574`, CONFIRMED), on top of the drop-in the image ships.
   path into a silent failure rather than a boot failure, so **the path is a review
   obligation that `niri validate` cannot catch** — it validates `local.kdl` and
   `../local.kdl` equally well while neither file exists. Verified by execution in
-  §3.2 below.
+  §3.8 below.
 
 ---
 
@@ -834,13 +834,16 @@ point, because four of the nine were invisible to every gate the plan defines.
    the job correctly declines to open an issue today.
 5. **`TESTING.md` was missing criteria 13 and 17** — the greeter's session list,
    and the live theme change that is the whole point of the skel `config.kdl`
-   copy. Both added; all 39 numbered criteria are now present.
+   copy. Both added; all 41 numbered criteria are now present.
 6. **Criterion 11 was a one-liner.** §4.8 makes it the check that settles
    `dms-greeter enable`: `systemctl get-default` reporting `graphical.target`,
    greetd enabled, and **both** `plasmalogin.service` and `sddm.service`
    disabled or not-found. Checking only the `display-manager.service` symlink
    passes vacuously. The four commands are now in the criterion.
 7. **The README claimed `cosign.pub` was committed** when it is not (§5).
+   *Since resolved*: the key pair was generated, the public half committed, and
+   the README rewritten to match. Both the README claim and the underlying gap
+   were real at the time.
 8. **The README's rollback section was not labelled §7**, which PROMPT asks for
    by name.
 9. **`--skip-validation` on the build job** and the two pinned tool installs
@@ -960,7 +963,7 @@ being left, and a date tag is only a record — the digest is what resolves.
 | Fedora | 44 |
 | `dms` installed | `1.6.2-1.fc44` |
 | `niri` installed | `26.04-1.fc44` |
-| Build date tag | *not produced locally* — the `id: meta` step is in the publish job, which cannot run without a cosign keypair (§5) |
+| Build date tag | *none locally* — the `id: meta` step lives in the publish job, which could not run without a keypair. In CI it produced `2026-10-01` (§6) |
 | Local build tag | `ghcr.io/bacondroid/kinrin:latest_linux_amd64` |
 | Local image digest | `sha256:566c0b521c02cd2bc30b96794509c506a090aa42efc8cf0b8f8343fad86295c0` |
 | Image size | 10.9 GB uncompressed, 2116 packages |
@@ -1050,7 +1053,8 @@ verification policy says nothing about this repository. The CI step therefore
 does both — `test -f` **and** `jq -e --arg r "ghcr.io/${REPO,,}" '.transports.docker
 | has($r)'` — and on this image the second would fail, correctly.
 
-The `signing` module ran in no build yet, because no `cosign.pub` exists (§5).
+The `signing` module ran in no build *up to this point*, because no `cosign.pub`
+existed yet. §6 records the first build that did exercise it, in CI.
 
 ### Deviations from the plan's own CI text, and why
 
@@ -1099,10 +1103,11 @@ Verified by execution on this machine:
 - The `cosign` key pair itself: `cosign generate-key-pair` was **blocked by the
   host's secret-path safety guard**, which refuses access to `*.key` paths. Per
   the guard's own instruction — "do not retry this operation or attempt any
-  workaround" — nothing was retried and nothing was worked around. So `cosign.pub`
-  is **not** in this tree, and the `signing` module — which exits 1 at the
-  **last** module without it, after the whole 20-minute build — is therefore
-  **not** exercised by the local build below. Generating the pair is a
+  workaround" — nothing was retried and nothing was worked around. At that moment
+  `cosign.pub` was **not** in this tree, so the `signing` module — which exits 1 at
+  the **last** module without it, after the whole 20-minute build — was not
+  exercised by the local build recorded in §5. It was committed later and does run
+  now; §6 is the evidence. Generating the pair is a
   prerequisite of the first publication, not a build step (§2.4), so this changes
   nothing in the recipe; it does mean the local run proves seven of the eight
   module files, and that is stated rather than glossed.
@@ -1210,7 +1215,7 @@ podman store when the gates start, so that `--pull=never` gates and a
 `podman save` handover can share one storage. On a GitHub runner that never
 happens, and not because of anything in this repository:
 
-- `process/drivers/docker_driver.rs:553` passes `--load` **only** when
+- `process/drivers/docker_driver.rs:556-558` passes `--load` **only** when
   `GITHUB_ACTIONS` is unset:
 
   ```rust
@@ -1233,9 +1238,9 @@ happens, and not because of anything in this repository:
   `.tar.gz` and not `.tar`.
 
 So the build job gains `--build-driver docker --archive`, plus one load step, and
-everything downstream is the plan's text unchanged — the `--pull=never` gates, the
-`podman save` handover, and `skopeo copy` from `containers-storage:` in the
-publish job. `--archive` is implemented only in the docker driver
+everything downstream kept the plan's text — the `--pull=never` gates above all.
+The handover it originally proposed, `podman save` plus `skopeo copy` from
+`containers-storage:`, was then replaced too; see below. `--archive` is implemented only in the docker driver
 (`podman_driver.rs` has no `LocalTar` arm), so `--build-driver docker` is
 load-bearing for this reason, not as a preference.
 
@@ -1247,9 +1252,9 @@ differences when they were one upstream behaviour. The runner reports that podma
 is 4.9.3 in a job that finishes in under a minute; reading a version number would
 have cost one cycle instead of three.
 
-### The one thing left, and why the first attempt at it closed the tab
+### The publication, and why the first attempt at it closed the tab
 
-The publication is not done, and it is one script: `~/Projects/kinrin-publish.sh`,
+The publication is one script — since run, and verified in §6: `~/Projects/kinrin-publish.sh`,
 run as a script. `README.md` § "Publish it" carries the reasoning.
 
 **Why a file and not a paste.** The first attempt was a block starting with
@@ -1328,9 +1333,9 @@ and not:
   Generate with a passphrase instead and add `COSIGN_PASSWORD` to the `Sign`
   step's `env:` block in `build.yml`, or the run blocks on a prompt that never
   comes.
-- **`git add cosign.pub` is named, never a blanket add.** `.gitignore` is
-  exactly `kinrin.tar` — PROMPT requires that, and specifically forbids ignoring
-  `*.pub` — so nothing stops a `git add -A` from staging `cosign.key` between the
+- **`git add cosign.pub` is named, never a blanket add.** `.gitignore` lists
+  `kinrin.tar` and `kinrin-oci.tar.gz` and nothing else — PROMPT requires the first
+  and forbids ignoring `*.pub` — so nothing stops a `git add -A` from staging `cosign.key` between the
   two commands above. Naming the file is the whole mitigation.
 - **`shred -u cosign.key` before the commit**, not after. The private half is on
   disk from step 1 until step 2 completes; deleting it immediately closes the
@@ -1371,5 +1376,6 @@ What that established, in order:
 
 **The digest above is that run's, and it is not a constant.** Every green run
 republishes and moves `:latest` and the dated tag, and the workflow has no path
-filter, so any push to `main` rebuilds. The authoritative digest is always the one
-captured in the run's own summary — never a value copied out of this file.
+filter, so any push to `main` rebuilds. The authoritative digest is the one the
+publish job prints in its log, in the `Capture digest` step — never a value copied
+out of this file.

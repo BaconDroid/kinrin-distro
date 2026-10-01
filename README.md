@@ -161,14 +161,12 @@ or the repository. The **public** half belongs at the repository root as `cosign
 input, not a secret — and is published as the `kinrin-cosign-pub` artifact of the
 publish job so it travels with the release.
 
-> **`cosign.pub` is not in this tree yet.** The pair was never generated: the
-> machine this was built on refused the write as a secret path, and the correct
-> response to that is to report it, not to route around it. Until the public half
-> exists, `bluebuild` reaches the **last** module and exits 1 — after the whole
-> twenty-minute build. See `NOTES.md` §5.
->
-> One command sequence finishes the publication; nothing above is a prerequisite
-> for it. See [Publish it](#publish-it) below.
+> `cosign.pub` **is** in this tree, and the image has been published and verified
+> against it — see `NOTES.md` §6. It was missing for most of the build, and that
+> gap is a trap rather than an inconvenience: without the public half `bluebuild`
+> reaches the **last** module and exits 1, after the whole twenty-minute build. If
+> you regenerate the tree from scratch, put this file in place *before* the first
+> CI run. See [Redoing this from scratch](#redoing-this-from-scratch).
 
 Verify what you actually installed, against the digest rather than a tag:
 
@@ -242,7 +240,7 @@ the in-image gates), `publish` (the GHCR push and the signature).
 Six checks gate on the image. Four are the plan's: `bluebuild validate` and
 `niri validate`, the presence chain over the `files.yaml` destinations
 (criterion 28), and the §6.1 policy read (criterion 28b). Two are additions:
-the `ID=kinrin` / `ID_LIKE=fedora` greps (§5) and `cosign verify` against the
+the `ID=kinrin` / `ID_LIKE=fedora` greps (PLAN §5) and `cosign verify` against the
 pushed digest (§6.1). `niri validate` runs **inside** the built image — the
 binary is absent from a CI runner and a host-side call would not see the image's
 config anyway.
@@ -258,36 +256,51 @@ PASS  os-release ID=kinrin
 PASS  os-release ID_LIKE=fedora
 ```
 
-The other two are unprovable here rather than passing. Criterion 28b needs the
-`signing` module, which needs `cosign.pub`, which does not exist yet — see
-[Publish it](#publish-it). And `cosign verify` needs a pushed digest. That is
-the honest state, not four out of six quietly reported as good enough.
+The other two are unprovable **here** rather than passing. Both need the published
+artifact: criterion 28b needs the `signing` module, which needs `cosign.pub`, and
+`cosign verify` needs a pushed digest. At the time of that local build `cosign.pub`
+did not exist yet — that is the honest state, not four out of six quietly reported
+as good enough.
+
+Both now pass in CI, where the artifact exists. Run `36821596275` was green across
+`validate`, `build` and `publish`, and the pushed image was then verified from
+outside CI: `cosign verify` accepts it against the committed `cosign.pub`, and a
+deliberately falsified digest is rejected. The gate that once failed on a
+*correct* image — because `${REPO,,}` cannot expand inside the container's `sh` —
+now passes for the right reason. See `NOTES.md` §6.
 
 One thing worth knowing about the policy check, because it is easy to get wrong:
 `/etc/containers/policy.json` **is already present** in a plain Kinoite base,
 shipped by `containers-common`. Its `.transports.docker` is `null`. So a gate
 that only did `test -f /etc/containers/policy.json` would pass on an image whose
-verification policy says nothing about this repository. The step does both —
-`test -f` **and** `jq -e '.transports.docker | has("ghcr.io/<owner>/<repo>")'`.
+verification policy says nothing about this repository. The step does both, and
+the reference is passed to `jq` as an argument — `--arg r "ghcr.io/$OWNER/$REPO"` —
+rather than interpolated into the program. That is not a style preference: inside
+single quotes, `${REPO,,}` never expands, so the assertion silently compares
+against an empty reference and fails against a perfectly good image.
 
 ## Monitoring
 
-`monitor-fedora.yml` runs monthly and opens one issue once **both** COPR package
-names, `dms` and `dms-greeter`, have left the COPR. It matches them
-individually on purpose: `DankMaterialShell` is already in Fedora, so a generic
-"DMS arrived" signal would read true on day one and open a migration issue while
-one of the two is still COPR-only.
+`monitor-fedora.yml` runs monthly and opens one issue only when **three**
+conditions hold together: both COPR package names, `dms` and `dms-greeter`, are
+gone from the COPR, **and** official Fedora now resolves `dms` or
+`DankMaterialShell`. The second half is what makes the signal mean anything — COPR
+absence on its own also reads true when the COPR has merely broken, which would
+file a migration issue that is not a migration. It matches the package names
+individually too: `DankMaterialShell` is already in Fedora, so a generic
+"DMS arrived" check would read true on day one while one of the two is still
+COPR-only.
 
 A broken COPR turns the monthly build red and leaves the published image healthy.
 The risk is not the outage — it is not seeing it.
 
 ## Publish it
 
-Everything above builds and runs. This is the part that is **not** done yet: the
-key pair was never generated, because the machine this was built on refused the
-write as a secret path and the correct response to that is to report it rather
-than route around it. Without the public half the `signing` module exits 1 at the
-**last** module, after the whole twenty-minute build.
+**This part is done.** The key pair was generated, the image was published to
+`ghcr.io/bacondroid/kinrin-distro`, and `cosign verify` passes against the
+committed `cosign.pub`. The procedure is kept below because it is also how you
+repeat a publication without orphaning the key CI already holds — and because
+every step in it exists to avoid a failure that actually happened.
 
 ### One command
 
@@ -295,10 +308,13 @@ than route around it. Without the public half the `signing` module exits 1 at th
 ~/Projects/kinrin-publish.sh
 ```
 
-Run it as a script — **do not paste it into an interactive shell.** `set -e` in
-an interactive shell terminates the terminal on the first non-zero exit, which
-closes the tab and loses the rest of the sequence; inside a script it can only
-end the script. That is the whole reason this exists as a file.
+Run it as a script. Note the script does **not** use `set -e`: it uses
+`set -uo pipefail` plus an explicit `die()` on every command, so a failure stops
+the sequence at a known point instead of the shell deciding. That is a better
+property than `set -e`, not a weaker one — `set -e` in an *interactive* shell
+terminates the terminal outright, which is what closed the tab during the first,
+pasted attempt. As a file, a failure costs you one `die` line and the script stops
+there.
 
 It is safe to re-run: each step checks whether it is already done, and it
 **refuses to regenerate** the key when `cosign.pub` is already committed, because
@@ -331,9 +347,10 @@ the private half off disk → commit **only** `cosign.pub` → push, which start
 - **The private half is shredded before the commit, not after.** It is on disk
   from the first command until the second; deleting it immediately closes the
   window instead of leaving it open until a later step happens to run.
-- **`git add cosign.pub` is named, never a blanket add.** `.gitignore` is
-  exactly `kinrin.tar` — required, and `*.pub` must never be ignored — so nothing
-  would stop a `git add -A` from staging the private key.
+- **`git add cosign.pub` is named, never a blanket add.** `.gitignore` lists
+  `kinrin.tar` and `kinrin-oci.tar.gz` and nothing else — the first is required,
+  and `*.pub` must never be ignored — so nothing would stop a `git add -A` from
+  staging the private key.
 
 ### After the run is green
 
@@ -362,7 +379,7 @@ cosign verify --key cosign.pub "ghcr.io/bacondroid/kinrin-distro@$DIGEST"
 
 `cosign verify` must pass. If it does not, the image is **not** verifiable and
 the boot-time policy resolves nothing — treat that as a real defect, not a
-warning. Record the digest and the date tag in `NOTES.md` §5 so the next build
+warning. Record the digest and the date tag in `NOTES.md` §6 so the next build
 knows which deployment a rollback returns to.
 
 ### Re-running without a new key
@@ -377,6 +394,109 @@ To rebuild or re-publish without touching the key at all, dispatch CI directly:
 ```bash
 gh workflow run build.yml --repo BaconDroid/kinrin-distro
 ```
+
+## Releases
+
+A GitHub Release is created automatically whenever `build.yml` goes green. It is
+an **index entry, not a host for the image**: GitHub caps a release asset at
+2 GiB and the OCI archive is 4.2, so the release carries the digest, the pinned
+`podman pull` and `cosign verify` commands, and `cosign.pub` — while the image
+itself stays in GHCR, the only place it is addressed by content rather than by
+name.
+
+```
+v MAJOR . MINOR . PATCH
+  │      │       └── counts publications within that pair
+  │      └────────── major version of dms
+  └───────────────── Fedora release
+```
+
+The first two are **read out of the built image** — `MAJOR` from
+`/etc/fedora-release`, `MINOR` from `rpm -q dms` — while it is loaded for the
+gates, never from a value typed into the workflow. A hardcoded version drifts the
+moment the base moves; a release whose name disagrees with its contents is worse
+than no release. So Fedora 44 builds as `v44.x.y`, Fedora 45 as `v45.0.0`, and dms
+2.x as `v44.2.0`.
+
+Two guards keep the numbering honest:
+
+- **Idempotent.** A re-run that reproduces the same digest does not mint a new
+  version — releases, not CI runs, are what get numbered.
+- **Serialised.** Releases are created under a concurrency group, so two runs
+  finishing together cannot read the same release list and race for one tag.
+
+The job holds `contents: write` and deliberately **not** `packages: write`, so it
+cannot move a tag in the registry.
+
+## Redoing this from scratch
+
+Every item below is a failure that actually happened, not a hypothetical. The
+order matters as much as the content.
+
+**In this order:**
+
+1. **`cosign.pub` must be in the tree before the first CI run.** It is a build
+   input, not documentation. Without it the `signing` module — the *last* of the
+   eight — exits 1, and the full build is spent before you find out.
+2. **Run `~/Projects/kinrin-publish.sh` as a script, never pasted into a shell.**
+   It uses `set -uo pipefail` and an explicit `die()` rather than `set -e`, so a
+   failure stops the sequence at a known point. Pasting it does not close the tab
+   the way the original `set -euo pipefail` attempt did — but a file is still the
+   only way to keep the steps ordered and idempotent.
+3. **Never `git add -A` while a key pair is on disk.** `.gitignore` is exactly
+   `kinrin.tar` and `kinrin-oci.tar.gz`; `*.pub` must never be ignored, so a
+   blanket add would stage the private half. The script names `cosign.pub`.
+4. **Do not pipe blank lines into cosign.** The only prompt that reads piped
+   stdin is the overwrite confirm, whose default is **N**; blank input declines
+   and aborts the command.
+5. **Shred the private half before committing, not after.** It exists on disk
+   from the first command until the second.
+6. **Do not add a Dockerfile, an `image` module, or versioned module names.** The
+   signing policy keys off the recipe's `name:` joined to the build registry, and
+   the eight modules are fixed in order with `signing` last.
+7. **Check the package is publicly readable rather than assuming it.** GHCR
+   creates packages private and a public repository does not change that.
+
+**The pipeline's own fixes are load-bearing. Do not "simplify" them away** —
+each is explained in the comments on the step that needs it:
+
+- `--build-driver docker` **and** `--archive`. bluebuild passes `--load` only when
+  `GITHUB_ACTIONS` is unset, because upstream expects a push; without them the
+  image stays inside the buildx builder and no local store can see it, while
+  bluebuild still logs `Finished building:` with every tag. `--archive` is
+  implemented only in the docker driver, which is why the driver is forced.
+- The archive is `<name>.tar.gz`. A glob of `*.tar` misses it.
+- A gate that runs `jq` **inside** the image must pass it as argv, not through
+  `sh -c` with the ref in single quotes: `${VAR,,}` is a bashism that never
+  expands inside the container's `sh`, so the ref silently arrives empty.
+- `sha256sum --check` resolves the filename *from the checksum line*, so a
+  release binary must be downloaded under its release name.
+- The publish job needs **both** `skopeo login` and `docker login`: skopeo writes
+  containers-image's `auth.json`, cosign reads `$DOCKER_CONFIG/config.json`.
+- Do not publish with `skopeo copy --all containers-storage:`. It drives podman
+  over `dial-stdio` and fails `Operation not permitted` on a runner where
+  `podman load` just succeeded. The archive is handed over and read as
+  `oci-archive:`.
+
+**Then verify, instead of believing the green tick:**
+
+```bash
+DIGEST=$(skopeo inspect --format '{{.Digest}}' docker://ghcr.io/bacondroid/kinrin-distro:latest)
+cosign verify --key cosign.pub "ghcr.io/bacondroid/kinrin-distro@$DIGEST"
+podman pull "docker://ghcr.io/bacondroid/kinrin-distro@$DIGEST"
+podman run --rm "docker://ghcr.io/bacondroid/kinrin-distro@$DIGEST" \
+  niri validate --config /etc/niri/config.kdl
+```
+
+Two of those checks matter more than they look. `skopeo inspect` **with no
+credentials at all** must succeed, or the package is private and the image is not
+actually installable by anyone else. And confirm the verification can fail:
+`cosign verify` against a deliberately falsified digest must be rejected. A check
+that cannot fail is not a check.
+
+Every `:latest` moves with each green run, so a digest copied into documentation
+is a record of one run, not a constant. The authoritative value is the one the
+publish job prints in its log, in the `Capture digest` step.
 
 ## Licence
 

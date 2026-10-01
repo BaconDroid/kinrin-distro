@@ -221,12 +221,11 @@ These run in CI and are the only four checks on the image:
       from a CI runner and it would not see the image — and `bluebuild validate`
       passes on the recipe, and the presence chain over the `files.yaml`
       destinations passes inside the same image.
-- [ ] **28b.** The signing policy covers the reference actually published:
-      inside the image,
-      `jq -r '.transports.docker | keys[]' /etc/containers/policy.json` prints
-      `ghcr.io/<owner>/<repo>` — the same reference the publish job pushed,
-      lowercased. A mismatch means boot-time verification of the published image
-      resolves nothing.
+- [ ] **28b.** The signing policy covers the reference actually published. CI
+      does not merely print the keys — it asserts, inside the image:
+      `jq -e --arg r "ghcr.io/$OWNER/$REPO" '.transports.docker | has($r)'`.
+      A mismatch means boot-time verification of the published image resolves
+      nothing, and printing the key would have passed on such a mismatch.
 
 CI adds two more: the `ID=kinrin` / `ID_LIKE=fedora` greps on `/etc/os-release`,
 and `cosign verify` against the pushed digest.
