@@ -795,6 +795,79 @@ last of the eight, immediately before `signing`. Two reasons, both load-bearing:
 
 ---
 
+## 3a. A self-audit that found real defects, and what it changed
+
+The finished tree was handed to an independent reviewer with instructions to be
+adversarial and to check every claim in these notes against the clones. It found
+nine defects and five false claims. All are fixed; recording the list is the
+point, because four of the nine were invisible to every gate the plan defines.
+
+**Fixed — these would each have shipped:**
+
+1. **`build.yml` named an image the build never produces.** Ten steps read
+   `ghcr.io/${OWNER,,}/kinrin:latest` while the recipe `name:` is
+   `kinrin-distro` (§2.5), so `bluebuild` tags `ghcr.io/bacondroid/kinrin-distro:latest`.
+   Every in-image gate, the `podman save` and both `skopeo copy` sources pointed
+   at a name nothing built. Now `${REPO,,}`, which is the same string by
+   construction rather than by coincidence — and the string `kinrin` no longer
+   appears anywhere in `build.yml` outside a comment.
+2. **Criterion 28b printed instead of asserting.** It ran
+   `jq -r '.transports.docker | keys[]'` and stopped there. A mismatch would
+   print and pass. It now asserts `has("ghcr.io/${REPO,,}")` with `jq -e`, so
+   the one check that exists to catch a name mismatch actually fails on one.
+3. **The monitor could never fire.** `$GITHUB_OUTPUT` was passed into the probe
+   container as a *host* path while the file was bind-mounted at `/out`, so the
+   probe wrote to a path that does not exist inside the container, produced no
+   step outputs at all, and `if: steps.probe.outputs.landed == 'true'` was
+   never true. Fixed by having the probe print tagged lines on **stdout** and the
+   host turn them into step outputs — which also removes a bind-mount permission
+   problem under rootless podman for no benefit.
+4. **The monitor never asked Fedora anything.** It enabled the COPR and asked
+   whether the COPR still answered, which means a **broken, moved or expired
+   COPR reads as "landed"** — exactly the signal §9 assigns to the monthly
+   *build*, not to this job. It now resolves four names: `dms` and `dms-greeter`
+   against the COPR, and `dms` plus `DankMaterialShell` against official Fedora
+   alone, and asserts no COPR is still enabled before the Fedora probes run so
+   they cannot answer from a leftover repo. **Verified by running it:**
+   `dms-1.6.0/1/1.6.2` and `dms-greeter-1:1.6.0/1/1.6.2` still resolve from the
+   COPR, `DankMaterialShell-1.4.4-2.fc44` is already in Fedora, `landed=false` —
+   the job correctly declines to open an issue today.
+5. **`TESTING.md` was missing criteria 13 and 17** — the greeter's session list,
+   and the live theme change that is the whole point of the skel `config.kdl`
+   copy. Both added; all 39 numbered criteria are now present.
+6. **Criterion 11 was a one-liner.** §4.8 makes it the check that settles
+   `dms-greeter enable`: `systemctl get-default` reporting `graphical.target`,
+   greetd enabled, and **both** `plasmalogin.service` and `sddm.service`
+   disabled or not-found. Checking only the `display-manager.service` symlink
+   passes vacuously. The four commands are now in the criterion.
+7. **The README claimed `cosign.pub` was committed** when it is not (§5).
+8. **The README's rollback section was not labelled §7**, which PROMPT asks for
+   by name.
+9. **`--skip-validation` on the build job** and the two pinned tool installs
+   were unrecorded deviations from §6's own command text. Now recorded, in the
+   section above.
+
+**False claims in these notes, corrected:**
+
+- `post_build.sh` was given as `cli/scripts/post_build.sh`. It is
+  `scripts/post_build.sh` at the root of the `blue-build/cli` repository — there
+  is no `cli/` prefix, that repository *is* the CLI crate. The content claim
+  (line 22 is a single `rm -rf /tmp/* /var/* /opt`, line 23 recreates `/opt`) was
+  and is exact.
+- "exactly one `def: false` among the **26** `matugenTemplate*` entries" — there
+  are **27** such keys; 26 carry a boolean `def` and
+  `matugenTemplateNeovimSettings` carries a compound object default. The
+  load-bearing half, exactly one scalar `def: false`, is unchanged.
+- "the other **21** module types are unversioned" — there are 24 module
+  directories, 2 carry a `versions:` list, so **22** are unversioned.
+- A cross-reference pointed at §2.1 for the `configVersion` discussion, which is
+  in §3.9.
+
+One finding the reviewer raised was checked and **rejected**: it reported the
+`ThemeBrowser.qml` `listInstalledThemes` callback as `:217-223`. Re-read, the
+callback spans **`:216-222`** — `:216` is the call, `:222` its closing `});` —
+so the note as written was correct.
+
 ## 4. Things the plan states that were checked here and hold
 
 Recorded so a future reader knows they are not merely inherited:
