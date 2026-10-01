@@ -502,9 +502,10 @@ jobs:
           # Idempotency. A re-run of the same commit rebuilds to the SAME digest,
           # and without this guard it would mint v44.1.1, v44.1.2 and so on for
           # one unchanged image. Releases, not CI runs, are what get numbered.
-          if gh release list --limit 200 --json body --jq '.[].body' | grep -qF "$DIGEST"; then
+          if gh release list --limit 200 --json body | jq -r '.[].body' | grep -qF "$DIGEST"; then
             EXISTING=$(gh release list --limit 200 --json tagName,body \
-              --jq ".[] | select(.body | contains(\"$DIGEST\")) | .tagName" | head -1)
+              | jq -r --arg d "$DIGEST" \
+                  '.[] | select(.body | contains($d)) | .tagName' | head -1)
             echo "::notice::digest $DIGEST is already released as $EXISTING — nothing to do"
             echo "version=$EXISTING" >> "$GITHUB_OUTPUT"
             echo "fresh=false" >> "$GITHUB_OUTPUT"
@@ -518,11 +519,14 @@ jobs:
           # the first release of a new minor is .0 rather than .1. `tonumber`, not
           # string max: v44.1.10 must sort above v44.1.9. Non-numeric suffixes are
           # filtered out rather than crashing the comparison.
-          HIGHEST=$(gh release list --limit 200 --json tagName --jq \
-            --arg p "$PREFIX" \
-            '[.[].tagName | select(startswith($p)) | ltrimstr($p)
-              | select(test("^[0-9]+$")) | tonumber]
-             | if length == 0 then -1 else max end')
+          # `gh --jq` is NOT jq and rejects `--arg`; the JSON is piped to a real
+          # jq, which is what accepts --arg. Both spellings look right and only
+          # one runs.
+          HIGHEST=$(gh release list --limit 200 --json tagName \
+            | jq -r --arg p "$PREFIX" '
+                [ .[].tagName | select(startswith($p)) | ltrimstr($p)
+                  | select(test("^[0-9]+$")) | tonumber ]
+                | if length == 0 then -1 else max end')
           VERSION="${PREFIX}$((HIGHEST + 1))"
 
           echo "Fedora $MAJOR, dms $MINOR, previous patch $HIGHEST -> $VERSION"
