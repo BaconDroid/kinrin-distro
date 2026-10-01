@@ -1,0 +1,49 @@
+type: dnf
+repos:
+  nonfree: rpmfusion
+  copr:
+    enable:
+      - avengemedia/dms
+install:
+  packages:
+    - niri
+    - dms
+    - quickshell
+    - gdb
+    - dms-greeter
+    - greetd
+    - dolphin
+    - konsole
+    - kate
+    - plasma-discover
+    - plasma-workspace
+    - plasma-workspace-common
+    - kwin
+    - libva-intel-media-driver
+    - libva-utils
+    - steam
+    - steam-devices
+    - discord
+    - xwayland-satellite
+    - jq
+    - acl
+    - curl
+    - git
+    - nodejs
+    - python3
+    - podman
+    - gcc
+    - make
+    - cmake
+    - rust
+    - cargo
+    - ripgrep
+    - fish
+    - zsh
+    - npm
+    - python3-pip
+    - golang
+    - git-lfs
+    - rustfmt
+    - rust-analyzer
+    - golangci-lint

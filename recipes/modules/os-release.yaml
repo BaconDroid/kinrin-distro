@@ -1,0 +1,8 @@
+type: os-release
+properties:
+  # §3 and §5: the two keys are one change, because an `ID` with no `ID_LIKE`
+  # declares no parent and every third-party repo branching on the parent ID
+  # loses that branch. This module runs last of the eight, so the whole dnf
+  # transaction and the `dms setup` in niri-config.yaml still read ID=fedora.
+  ID: kinrin
+  ID_LIKE: fedora

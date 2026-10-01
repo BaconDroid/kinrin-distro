@@ -1,0 +1,16 @@
+type: script@v2
+snippets:
+  # §4.12. A script module because it fetches a URL — no official BlueBuild
+  # module can download anything — and because it runs the shape assertion,
+  # which `files` equally cannot do. The wrong copy of theme.json fails
+  # SILENTLY: DMS falls back to a default theme rather than erroring.
+  # ONE snippet entry, because the v2 runner gives each entry its own
+  # `/bin/sh -c 'set -eu; …'` subshell.
+  - |
+    install -d /usr/share/dms-themes/dracula
+    curl -fsSL -o /usr/share/dms-themes/dracula/theme.json \
+      https://raw.githubusercontent.com/AvengeMedia/dms-plugin-registry/master/themes/dracula/theme.json
+    jq -e 'has("dark") and has("light") and (.dark.surfaceContainerLowest | type == "string") and (.light.surfaceContainerLowest | type == "string")' \
+      /usr/share/dms-themes/dracula/theme.json
+    install -Dm444 /usr/share/dms-themes/dracula/theme.json \
+      /etc/skel/.config/DankMaterialShell/themes/dracula/theme.json

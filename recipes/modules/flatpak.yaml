@@ -1,0 +1,15 @@
+type: script@v2
+snippets:
+  - |
+    install -d /var/lib/flatpak
+    # `flatpak` is captured before it is grepped, and that is load-bearing: a pipeline
+    # reports the status of its LAST command, so `flatpak remotes … | grep -qx fedora`
+    # swallows a failing `flatpak`, skips both deletes and still exits 0.
+    # All six commands stay in ONE snippet because the v2 runner gives each entry its
+    # own `/bin/sh -c 'set -eu; …'` subshell, so $remotes would not survive to the
+    # next entry.
+    remotes=$(flatpak remotes --system --columns=name)
+    if printf '%s\n' "$remotes" | grep -qx fedora;        then flatpak remote-delete --system fedora;        fi
+    if printf '%s\n' "$remotes" | grep -qx fedora-testing; then flatpak remote-delete --system fedora-testing; fi
+    touch /var/lib/flatpak/.fedora-initialized
+    ln -sf /dev/null /etc/systemd/system/flatpak-add-fedora-repos.service

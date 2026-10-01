@@ -1,0 +1,10 @@
+[Unit]
+Description=Enable on-demand VRR on every output
+After=niri.service
+PartOf=niri.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=infinity
+ExecStart=/bin/sh -c 'until [ -n "$$(niri msg -j outputs | jq -r "keys[]")" ]; do sleep 1; done; for o in $$(niri msg -j outputs | jq -r "keys[]"); do niri msg output "$$o" vrr on --on-demand; done'

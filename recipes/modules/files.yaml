@@ -1,0 +1,47 @@
+type: files
+files:
+  # §4.2 — the KDE portal backend, unreachable under `niri` without this.
+  - source: etc/xdg/xdg-desktop-portal/portals.conf
+    destination: /etc/xdg/xdg-desktop-portal/portals.conf
+  # §4.1 — greetd 0.10 syntax; `user = "greeter"` is also read back by the
+  # dms-greeter %post to chown the cache. §7's "never edit a shipped file" has
+  # no exception to fall back on here: greetd reads no drop-in directory.
+  - source: etc/greetd/config.toml
+    destination: /etc/greetd/config.toml
+  # §4.0 — HandleLidSwitch, shipped with its section header or logind drops it.
+  - source: etc/systemd/logind.conf.d/kinrin.conf
+    destination: /etc/systemd/logind.conf.d/kinrin.conf
+  # §4.8 — binds dms.service to niri.service. `Wants=` has no stop semantics.
+  - source: usr/lib/systemd/user/niri.service.d/kinrin-dms.conf
+    destination: /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf
+  # §4.7 — unit-scoped, so it never leaks into the Plasma fallback.
+  - source: usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf
+    destination: /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf
+  # §4.7 — a second drop-in because `Environment=` never reaches a `Wants=`ed unit.
+  - source: usr/lib/systemd/user/niri.service.d/kinrin-theme.conf
+    destination: /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf
+  # §4.7 — `PartOf=niri.service` is what actually stops DMS with the session.
+  - source: usr/lib/systemd/user/dms.service.d/kinrin-theme.conf
+    destination: /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf
+  # §4.4 — activates the VRR unit. Nothing enables it; a [Install] section here
+  # would start it in every session, Plasma included.
+  - source: usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf
+    destination: /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf
+  # §4.4 — TimeoutStartSec=infinity, never 0, which is a zero-second budget.
+  - source: usr/lib/systemd/user/niri-vrr.service
+    destination: /usr/lib/systemd/user/niri-vrr.service
+  # §4.7 — two keys unrelated to DMS; none of the three DMS variables appears here.
+  - source: etc/environment.d/90-dms.conf
+    destination: /etc/environment.d/90-dms.conf
+  # §4.14 — without this the `dms setup` in niri-config.yaml refuses an
+  # immutable Kinoite. `immutable_system: false` is the operative key.
+  - source: usr/share/dms/cli-policy.json
+    destination: /usr/share/dms/cli-policy.json
+  # §4.4 — the window rules, reached through the include niri-config.yaml
+  # prepends to the generated binds.kdl.
+  - source: etc/skel/.config/niri/local.kdl
+    destination: /etc/skel/.config/niri/local.kdl
+  # §4.12 — applies Dracula at first login with nothing touched. The
+  # configVersion is re-read from the installed dms before each build.
+  - source: etc/skel/.config/DankMaterialShell/settings.json
+    destination: /etc/skel/.config/DankMaterialShell/settings.json

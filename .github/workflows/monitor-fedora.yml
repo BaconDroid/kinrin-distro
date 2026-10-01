@@ -1,0 +1,150 @@
+# Monthly check that the two COPR package names have landed in the Fedora repos.
+#
+# §9. Two rules decide whether this job helps or misleads, and both are load-bearing:
+#
+#  1. Match the two COPR package names INDIVIDUALLY — `dms` and `dms-greeter` —
+#     never a generic "DMS arrived" signal, or the job opens a migration issue
+#     while one of the two is still COPR-only and the next build fails.
+#     `DankMaterialShell` is ALREADY in Fedora and `danksearch` is too, so any
+#     "a DMS package exists" signal reads true on day one. Landed means the COPR
+#     name is GONE from the COPR, not that some DMS package exists in Fedora.
+#
+#  2. The issue it opens must name the right file: `recipes/modules/dnf.yaml`,
+#     NOT `recipe.yaml`, which only lists modules and has no such key. Saying the
+#     wrong file is worse than saying nothing — it sends the maintainer editing a
+#     file with nothing to remove. And the same issue must also say to RENAME
+#     `dms` to `DankMaterialShell` in that file's `install:` list: dropping the
+#     COPR key without the rename leaves a `dnf` module asking for a package no
+#     enabled repo provides, and the build fails.
+#
+# A broken COPR turns the monthly build red and leaves the published image
+# healthy. The risk is not the outage, it is not seeing it — which is what this
+# job is for.
+name: monitor-fedora
+
+on:
+  schedule:
+    # Monthly, deliberately offset from build.yml's 05:17 so the two do not
+    # compete for the same runner minutes.
+    - cron: '43 6 2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-landed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve each COPR package name against the COPR alone
+        # Two names, two separate probes, deliberately. The probe runs inside a
+        # fedora:44 container rather than on the runner: ubuntu-latest has no dnf,
+        # and a plain fedora container enables ONLY the COPR — so a hit means
+        # "still COPR-only", which is exactly what must keep the issue closed.
+        id: copr
+        env:
+          PROBE: |
+            set -uo pipefail
+            dnf -y install dnf-plugins-core >/dev/null
+            dnf -y copr enable avengemedia/dms
+            dnf -y makecache
+
+            in_copr() {
+              # Non-empty output means the name still resolves from the COPR.
+              # dnf5 prints nothing and exits 0 for an unknown name, so an empty
+              # result means absent — never treat a non-zero exit as "absent".
+              dnf repoquery --qf '%{name}-%{evr}' "$1" 2>/dev/null | head -1
+            }
+
+            dms_hit=$(in_copr dms || true)
+            greeter_hit=$(in_copr dms-greeter || true)
+
+            {
+              echo "dms_in_copr=${dms_hit}"
+              echo "dms_greeter_in_copr=${greeter_hit}"
+              if [ -n "$dms_hit" ] || [ -n "$greeter_hit" ]; then
+                echo "landed=false"
+              else
+                echo "landed=true"
+              fi
+            } >> "$GITHUB_OUTPUT"
+        run: |
+          docker run --rm \
+            -e GITHUB_OUTPUT="$GITHUB_OUTPUT" \
+            -e PROBE="$PROBE" \
+            -v "$GITHUB_OUTPUT:/out" \
+            docker.io/library/fedora:44 bash -c "$PROBE"
+          {
+            echo "dms in COPR:         ${dms:-}"
+            echo "dms-greeter in COPR: ${greeter:-}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open the migration issue once both names have left the COPR
+        if: steps.copr.outputs.landed == 'true'
+        run: |
+          set -euo pipefail
+          # Idempotent: a closed issue means the work is done, so do not reopen.
+          if gh issue list --state all --search 'DMS has landed in Fedora' \
+               --json number --jq '.[0].number' | grep -q .; then
+            echo "A migration issue already exists; not opening another."
+            exit 0
+          fi
+
+          cat > /tmp/issue.md <<'EOF'
+          `dms` and `dms-greeter` have both left the COPR: the monthly monitor
+          can no longer resolve either name from `copr.fedorainfracloud.org/avengemedia/dms`.
+          The COPR still earns its place until this is done — drop it and the
+          build asks for packages no enabled repo provides.
+
+          This is **two edits, in one change**, both in
+          `recipes/modules/dnf.yaml` — *not* in `recipe.yaml`, which only lists
+          modules and has no COPR key to remove:
+
+          1. Remove the `copr:` key from the `repos:` mapping:
+
+             ```yaml
+             repos:
+               nonfree: rpmfusion
+             ```
+
+             `nonfree:` and `copr:` are two keys at the same level, not list
+             entries. A `- copr:` entry breaks the build.
+
+          2. In that same file's `install: packages:` list, replace `dms` with
+             `DankMaterialShell` — the name Fedora carries:
+
+             ```diff
+             -      - dms
+             +      - DankMaterialShell
+             ```
+
+             Step 1 alone leaves the `dnf` module requesting a package no
+             enabled repo provides, and the build fails on the next run.
+
+          Then re-run the §8 criteria by hand, and let the monthly CI run confirm
+          it. A dropped package name that nothing notices is the failure mode
+          this whole migration is trying to avoid.
+          EOF
+
+          gh issue create \
+            --title 'DMS has landed in Fedora: drop the COPR and rename dms' \
+            --body-file /tmp/issue.md
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '### Fedora landing monitor'
+            echo
+            echo '| Package | Still in the COPR? |'
+            echo '|---|---|'
+            echo "| \`dms\` | ${{ steps.copr.outputs.dms_in_copr || 'not in the COPR' }} |"
+            echo "| \`dms-greeter\` | ${{ steps.copr.outputs.dms_greeter_in_copr || 'not in the COPR' }} |"
+            echo
+            echo 'Landed means **both** COPR names are gone from the COPR.'
+            echo '`DankMaterialShell` and `danksearch` are already in Fedora, so'
+            echo 'their presence says nothing about this.'
+          } >> "$GITHUB_STEP_SUMMARY"

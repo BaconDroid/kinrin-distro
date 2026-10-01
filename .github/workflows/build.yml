@@ -1,0 +1,242 @@
+# This is the workflow that publishes the KinRin image.
+#
+# Workflow-level, not job-level:
+#   env:  — all three jobs expand ${{ env.OWNER }} / ${{ env.REPO }}, and the build
+#           job's `podman save` expands $OWNER too. A job-scoped env would leave
+#           it empty there. Both podman and skopeo reject an uppercase owner and
+#           a GitHub login may carry one, so everything lowercases with ${OWNER,,}.
+#   if:   — deliberately NOT here. A bare workflow-level `if:` is a schema error.
+#           The default-branch gate sits at JOB level on `build` and `publish`.
+#
+# The two job-level gates matter: without them a `workflow_dispatch` from a
+# feature branch produces a tag the steps below never name, and the jobs fail
+# with "image not known".
+name: build
+
+on:
+  push:
+  schedule:
+    # Monthly. The base follows `:latest` and is never pinned, so a monthly run
+    # is the only thing that detects upstream drift.
+    - cron: '17 5 1 * *'
+  workflow_dispatch:
+
+env:
+  OWNER: ${{ github.repository_owner }}
+  REPO: ${{ github.repository }}
+
+jobs:
+  # Job 1 — pre-build validate, on every push as well as the schedule. This is
+  # the gate that keeps a bad recipe out of a 20-minute bootc build.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A GitHub runner has no bluebuild. Installed from upstream's own
+      # installer image, pinned by DIGEST rather than by tag so a re-pushed
+      # `:latest`-style tag cannot change what builds this image, then asserted
+      # by version string. This is the same 0.9.37 the recipe was written against
+      # (NOTES.md §1.2).
+      - name: Install bluebuild
+        run: |
+          set -euo pipefail
+          VERSION=v0.9.37
+          DIGEST=sha256:281d3152c1a4e30e75e777f78b07a8c5c1e5130cb44092f4b4b507402556ec0a
+          REF="ghcr.io/blue-build/cli@${DIGEST}"
+          sudo mkdir -p /opt/bb
+          podman create --name bb-install "$REF"
+          podman cp bb-install:/out/bluebuild /opt/bb/bluebuild
+          podman rm bb-install
+          sudo install -m 0755 /opt/bb/bluebuild /usr/local/bin/bluebuild
+          rm -rf /opt/bb
+          bluebuild --version
+          bluebuild --version | grep -q 'BlueBuild 0.9.37'
+
+      - name: Validate the recipe
+        run: bluebuild validate recipes/recipe.yaml
+      - name: Generate the Containerfile
+        # `generate` needs the flags as much as `build` does: the `signing` module
+        # keys its policy from what `generate` passes, so left unset the two
+        # would name the image differently.
+        run: |
+          bluebuild generate recipes/recipe.yaml -o /tmp/Containerfile \
+            --registry ghcr.io --registry-namespace "${OWNER,,}"
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    steps:
+      - uses: actions/checkout@v4
+
+      # bootc images grow fast; free runner disk before spending 20 minutes on it.
+      - name: Free disk space
+        run: rm -rf /opt/hostedtoolcache
+
+      - name: Install bluebuild
+        run: |
+          set -euo pipefail
+          VERSION=v0.9.37
+          DIGEST=sha256:281d3152c1a4e30e75e777f78b07a8c5c1e5130cb44092f4b4b507402556ec0a
+          REF="ghcr.io/blue-build/cli@${DIGEST}"
+          sudo mkdir -p /opt/bb
+          podman create --name bb-install "$REF"
+          podman cp bb-install:/out/bluebuild /opt/bb/bluebuild
+          podman rm bb-install
+          sudo install -m 0755 /opt/bb/bluebuild /usr/local/bin/bluebuild
+          rm -rf /opt/bb
+          bluebuild --version | grep -q 'BlueBuild 0.9.37'
+
+      - name: Build the image
+        # The flags, not a hand-written tag: `bluebuild` names the image from
+        # the recipe `name:` plus `--registry`/`--registry-namespace`, and
+        # lowercases all three. The `signing` module keys its in-image policy
+        # from exactly that value, so the policy and the pushed reference agree
+        # (criterion 28b).
+        run: |
+          bluebuild -vv build \
+            --registry ghcr.io --registry-namespace "${OWNER,,}" \
+            --skip-validation recipes/recipe.yaml
+
+      # Gate 1 of 4 on the image (criterion 28). `niri validate` is not runnable
+      # bare: the binary is absent from a GitHub runner, and a host-side call
+      # would not see the image's config anyway.
+      - name: niri validate inside the image
+        run: |
+          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+            niri validate --config /etc/niri/config.kdl
+
+      # Gate 2 of 4 (criterion 28). The only check that can see a `files`
+      # destination go missing: a `{source:}` entry with no `{destination:}`
+      # leaves DEST the literal string `null`, `cp -f` succeeds, and the module
+      # exits 0. Thirteen paths, one && chain, the §5.2 list in order.
+      - name: files.yaml presence chain
+        run: |
+          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" sh -c 'test -f /etc/xdg/xdg-desktop-portal/portals.conf && test -f /etc/greetd/config.toml && test -f /etc/systemd/logind.conf.d/kinrin.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf && test -f /usr/lib/systemd/user/niri-vrr.service && test -f /etc/environment.d/90-dms.conf && test -f /usr/share/dms/cli-policy.json && test -f /etc/skel/.config/niri/local.kdl && test -f /etc/skel/.config/DankMaterialShell/settings.json'
+
+      # Gate 3 of 4 (criterion 28b) + the two greps the prompt adds (§5). Read the
+      # signing policy out of the image rather than asserting it: an absent policy
+      # is an absence, not a default. The 2>&1 matters — without it a missing file
+      # goes to stderr and the jq below cannot fail on it.
+      - name: Read the signing policy out of the built image
+        run: |
+          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
+          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" sh -c 'test -f /etc/containers/policy.json || exit 1'
+          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+            jq -r '.transports.docker | keys[]' /etc/containers/policy.json
+
+      - name: os-release carries ID=kinrin and ID_LIKE=fedora
+        run: |
+          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+            grep -qE '^ID="?kinrin"?$' /etc/os-release
+          podman run --rm "ghcr.io/${OWNER,,}/kinrin:latest" \
+            grep -qE '^ID_LIKE="?fedora"?$' /etc/os-release
+
+      # Hand the image to the publish job. Each job gets a FRESH runner, so
+      # podman storage does not travel with `needs: build`; without this the
+      # publish job has no image to read.
+      # `pipefail` is load-bearing: without it the step takes zstd's status, so a
+      # failed `podman save` still yields a valid (empty) kinrin.tar and the
+      # publish job fails later with a confusing error instead of here.
+      - name: Save the image
+        run: |
+          set -o pipefail && podman save "ghcr.io/${OWNER,,}/kinrin:latest" | zstd -T0 > kinrin.tar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kinrin-image
+          path: kinrin.tar
+
+      - name: Publish the cosign public key as an artifact
+        # The public half must travel with the release: it is what `cosign
+        # verify` checks and what the target machine needs at boot. `--key` reads
+        # a file, not a variable.
+        uses: actions/upload-artifact@v4
+        with:
+          name: kinrin-cosign-pub
+          path: cosign.pub
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    permissions:
+      # The GHCR push needs packages: write; the checkout needs contents: read.
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kinrin-image
+
+      # cosign is not on a GitHub runner either. Pinned to a released version and
+      # checked against the checksum upstream publishes beside it, so the binary
+      # that signs is the binary upstream shipped — without needing cosign to
+      # verify cosign.
+      - name: Install cosign
+        run: |
+          set -euo pipefail
+          VERSION=v3.1.3
+          BASE=https://github.com/sigstore/cosign/releases/download/${VERSION}
+          curl -fsSL -o cosign "${BASE}/cosign-linux-amd64"
+          curl -fsSL -o checksums.txt "${BASE}/cosign_checksums.txt"
+          grep 'cosign-linux-amd64$' checksums.txt | sha256sum --check --status
+          sudo install -m 0755 cosign /usr/local/bin/cosign
+          rm -f cosign checksums.txt
+          cosign version | head -1
+
+      # Skipping this fails `Publish` outright, with no local image for
+      # `skopeo copy` to read — and the digest step is downstream and never
+      # reached. That is a different failure from an empty digest.
+      - name: Load the image
+        run: podman load -i kinrin.tar
+
+      - name: Log in to GHCR
+        run: skopeo login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Meta
+        id: meta
+        # Computed HERE, in the publish job, and never hardcoded: the base is not
+        # pinned, so a frozen tag would name a build that no longer happens.
+        run: echo "tag=$(date +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        # The source is `containers-storage:`, NOT `docker://` — the latter is a
+        # *registry* reference and fails with `connection refused` on a runner.
+        # Two copies because one copy pushes one tag.
+        run: |
+          skopeo copy --all "containers-storage:ghcr.io/${OWNER,,}/kinrin:latest" "docker://ghcr.io/${REPO,,}:latest"
+          skopeo copy --all "containers-storage:ghcr.io/${OWNER,,}/kinrin:latest" "docker://ghcr.io/${REPO,,}:${{ steps.meta.outputs.tag }}"
+
+      # AFTER the push, and read back from the registry: `skopeo copy` rewrites
+      # the layers, so the local manifest digest is not the one the registry
+      # serves, and signing that one fails with `manifest unknown`.
+      # --preserve-digests is not an escape; it errors with
+      # "Copying this image would require changing layer representation".
+      - name: Capture digest
+        id: digest
+        run: echo "digest=$(skopeo inspect --format '{{.Digest}}' "docker://ghcr.io/${REPO,,}:latest")" >> "$GITHUB_OUTPUT"
+
+      # A command substitution that fails does NOT fail its step: `echo
+      # "digest=$(false)"` exits 0 and writes `digest=`. Never sign an empty or
+      # unresolvable reference.
+      - name: Assert the digest is non-empty
+        run: test -n "${{ steps.digest.outputs.digest }}"
+
+      - name: Sign
+        env:
+          # In the step `env:` block, NOT as an inline shell prefix: a generated
+          # cosign key is a MULTILINE PEM, and an unquoted `VAR=${{ … }} command`
+          # prefix splits at the first newline inside it.
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          # Add COSIGN_PASSWORD here ONLY if the key is passphrase-protected, or
+          # the run blocks on a prompt that never comes.
+        run: cosign sign --yes --key env://COSIGN_PRIVATE_KEY "ghcr.io/${REPO,,}@${{ steps.digest.outputs.digest }}"
+
+      # Gate 4: verify the pushed digest, never a tag — no tag designates a
+      # stable image across builds. This one can only run once job 3 has pushed.
+      - name: Verify the signature against the pushed digest
+        run: cosign verify --key cosign.pub "ghcr.io/${REPO,,}@${{ steps.digest.outputs.digest }}"

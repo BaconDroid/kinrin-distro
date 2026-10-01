@@ -1,0 +1,25 @@
+type: script@v2
+snippets:
+  # §4.5, with the Dockerfile `RUN` verb stripped: a snippet is a plain
+  # /bin/sh command string. `dms` refuses root on every subcommand and the
+  # build is root, hence the throwaway `builder` and `su - builder`.
+  # ONE snippet entry, because the v2 runner gives each entry its own
+  # `/bin/sh -c 'set -eu; …'` subshell.
+  - |
+    dnf install -y util-linux shadow-utils \
+     && useradd -m -u 2000 builder \
+     && install -d -o builder -g builder /staging \
+     && su - builder -c 'HOME=/staging dms setup headless --compositor niri' \
+     && rpm -ql niri | grep -q '/systemd/user/niri.service' \
+     && rpm -ql dms | grep -q 'dms.service' \
+     && sed -i '1i include optional=true "../local.kdl"' /staging/.config/niri/dms/binds.kdl \
+     && sed -i 's/spawn "ghostty"/spawn "konsole"/' /staging/.config/niri/dms/binds.kdl \
+     && install -d /etc/niri/dms /etc/skel/.config/niri/dms \
+     && install -m644 /staging/.config/niri/config.kdl /etc/niri/config.kdl \
+     && install -m644 /staging/.config/niri/config.kdl /etc/skel/.config/niri/config.kdl \
+     && install -m644 /staging/.config/niri/dms/binds.kdl /etc/niri/dms/binds.kdl \
+     && install -m644 /staging/.config/niri/dms/binds.kdl /etc/skel/.config/niri/dms/binds.kdl \
+     && niri validate --config /staging/.config/niri/config.kdl \
+     && dnf clean all \
+     && rm -rf /var/cache/dnf /var/cache/yum /staging \
+     && userdel -r builder

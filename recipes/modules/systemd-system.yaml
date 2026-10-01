@@ -1,0 +1,16 @@
+type: systemd
+system:
+  # The base ships a DM enabled: /etc/systemd/system/display-manager.service ->
+  # /usr/lib/systemd/system/plasmalogin.service. Enabling greetd repoints that
+  # alias at greetd.service, which activates ONLY through the alias.
+  # `display-manager.service` must therefore NOT appear under `disabled:`: this
+  # module runs its `enabled:` loop first, so disabling the alias would delete
+  # the symlink just created and leave the image booting with no login at all.
+  enabled:
+    - greetd
+  # Harmless to declare and still worth declaring: the base may have
+  # plasmalogin.service enabled directly, and a second DM racing greetd for
+  # VT1 is the same unsettled boot. The package stays, so the Plasma fallback
+  # binaries remain.
+  disabled:
+    - plasmalogin.service

@@ -1,0 +1,100 @@
+# Licensing
+
+KinRin is a **container image**, not a single work of authorship, so it cannot
+carry one covering licence. It bundles components under at least three different
+terms plus one with none, and `GPL-2.0-only` is not a valid umbrella: it cannot
+cover Niri's `GPL-3.0-or-later`.
+
+PLAN §10 therefore resolves to **per-component notices**, which is what this file
+is. It covers the components the image is assembled from, by category, and names
+each component's own authoritative licence file as the source of truth.
+
+## The image bundles
+
+| Component | Licence | Notes |
+|---|---|---|
+| Fedora base and packages | **GPL-2.0-only**, plus per-package terms | `quay.io/fedora/fedora-kinoite:latest` and everything `dnf` installs from official Fedora repos. Each package's own spec governs it; `rpm -q --qf '%{LICENSE}\n' <pkg>` reports the authoritative value. |
+| niri | **GPL-3.0-or-later** | <https://github.com/niri-wm/niri> |
+| DankMaterialShell (`dms`, `dms-cli`) | **MIT** | <https://github.com/AvengeMedia/DankMaterialShell> |
+| `dms-greeter` | as declared by its own package | Installed from the COPR's second stanza. Its repository is a **candidate** read out of the spec's `URL:` field, not a verified identity, so no licence is asserted here. |
+| Dracula DMS theme | **no licence declared** | See below. |
+
+### The one component with no licence
+
+`/usr/share/dms-themes/dracula/theme.json` is fetched from the **DMS plugin
+registry**, not from the dracula organisation:
+
+```
+https://raw.githubusercontent.com/AvengeMedia/dms-plugin-registry/master/themes/dracula/theme.json
+```
+
+The source repository declares **no licence at all** for this file, and none for
+the repository itself. It therefore cannot be filed under dracula's MIT, and it
+carries its own line here as an **unlicensed component**. It is a JSON colour
+definition, not artwork.
+
+**Nothing else from the dracula organisation is installed.** That was verified
+against the GitHub API rather than assumed:
+
+- `dracula/kde` returns **404** — there is no GPL-3.0 KDE tree, and no
+  `metadata.desktop` carrying `X-KDE-PluginInfo-License=GPLv3` exists anywhere to
+  point at, so that citation is unavailable rather than merely unwanted.
+- `dracula/gtk` does exist, and `dracula/dracula-theme` ships per-app trees
+  (`themes/gtk`, `themes/kate`, `themes/konsole`, `themes/qt5`, …) — none of
+  which this image installs.
+
+Theming is DMS plus matugen only, which is what sidesteps the question: matugen
+repaints colours and leaves widget style, icons and cursor alone, so Breeze stays
+underneath and covers whatever the colour scheme does not reach.
+
+### Proprietary components installed from RPM Fusion
+
+`steam` and `steam-devices` (from `rpmfusion-nonfree`) and `discord` (also from
+`rpmfusion-nonfree`) are **proprietary** and are redistributed under their own
+terms by RPM Fusion, not under this file. They are accepted knowingly: neither
+has an upstream `.src.rpm`, so RPM Fusion is the only sane non-Flathub route for
+either. Their terms apply to the packages themselves; this repository's own
+licence does not extend to them.
+
+`orca` is installed from its own GitHub release RPM
+(<https://github.com/stablyai/orca>) at build time, so it is neither vendored
+here nor covered here.
+
+## This repository's own contents
+
+Everything in this repository that is not listed above — the recipe, the module
+files, the `files/` data tree, the two workflows, and the documentation — is
+published under the **MIT licence**.
+
+```
+MIT License
+
+Copyright (c) 2026 KinRin contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Why this choice, recorded
+
+PLAN §10 asked for either a licence that covers the whole set or per-component
+notices. No single licence does: the set spans GPL-2.0-only, GPL-3.0-or-later,
+MIT, proprietary terms, and one component with no declared licence at all.
+Per-component notices are therefore the only honest option, and the unlicensed
+`theme.json` is called out on its own line rather than being quietly folded
+under a neighbour's terms.

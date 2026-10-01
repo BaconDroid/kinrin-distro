@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
+version: 1
+name: kinrin
+description: Fedora Kinoite with Niri and DankMaterialShell as the primary desktop
+# The tag comes from `image-version`, not from here: BlueBuild composes the base
+# reference as `{base-image}:{image-version}` (recipe/src/recipe_v1.rs:114), so a
+# tag on `base-image` would yield `...:latest:latest`. This still resolves to
+# quay.io/fedora/fedora-kinoite:latest — never pinned (rule 2).
+base-image: quay.io/fedora/fedora-kinoite
+image-version: latest
+
+modules:
+  # §4.0 — COPR and RPM Fusion first, then the packages.
+  - from-file: modules/dnf.yaml
+  # §3.2 — immediately after dnf, while /var/lib/flatpak is still empty.
+  - from-file: modules/flatpak.yaml
+  # §5.2 — before niri-config.yaml, the one module whose content depends on a
+  # file another module wrote (§4.14's cli-policy.json).
+  - from-file: modules/files.yaml
+  - from-file: modules/systemd-system.yaml
+  - from-file: modules/niri-config.yaml
+  - from-file: modules/theme.yaml
+  - from-file: modules/orca.yaml
+  # §5 — last of the eight, so dnf and `dms setup` still read ID=fedora.
+  - from-file: modules/os-release.yaml
+  # §6.1 — contributes the verification policy the image ships, layered over an
+  # image that already contains everything. The private key never enters it.
+  - type: signing
