@@ -1154,6 +1154,15 @@ it listed `ghcr.io/bacondroid/kinrin-distro` as a key, with
 container ever sees the argument. Worth recording because the failure presented as
 a build problem and was not one.
 
+### `sha256sum --check` needs the file's real name
+
+The cosign install step downloaded the release binary as `cosign`, then verified
+it with `grep 'cosign-linux-amd64$' checksums.txt | sha256sum --check --status`.
+That check takes the filename *from the checksum line* and looks it up in the
+working directory, so it failed with `sha256sum: cosign-linux-amd64: No such file
+or directory` — on a checksum that was correct and a download that was intact. The
+binary is now saved under its release name and only renamed by `install`.
+
 ### `--build-driver docker` plus `--archive`, forced by upstream's own source
 
 The plan's §6 CI text assumes the image bluebuild built is sitting in the local
