@@ -24,6 +24,11 @@ on:
 env:
   OWNER: ${{ github.repository_owner }}
   REPO: ${{ github.repository }}
+  # Where `--archive` writes the OCI archive that the load step consumes.
+  # A literal path, because `runner`/`env` contexts are not available in a
+  # workflow-level env block (actionlint rejects them); RUNNER_TEMP is exported
+  # into every step shell on a GitHub runner, so the steps use that instead.
+  ARCHIVE_DIR: /tmp/kinrin-archive
 
 jobs:
   # Job 1 — pre-build validate, on every push as well as the schedule. This is
@@ -66,12 +71,7 @@ jobs:
           echo "GraphRoot: $(podman info --format '{{.Store.GraphRoot}}' 2>&1 || true)"
           echo "RunRoot:   $(podman info --format '{{.Store.RunRoot}}' 2>&1 || true)"
           echo "--- podman images ---"; podman images 2>&1 || true
-          echo "--- docker ---"
-          echo "which docker: $(command -v docker || echo none)"
-          docker --version 2>&1 || true
-          docker buildx version 2>&1 || echo "NO BUILDX"
-          docker --help 2>&1 | grep -c buildx | sed 's/^/buildx in docker --help: /'
-          docker info --format '{{.Driver}}' 2>&1 || true
+          echo "--- sudo podman images ---"; sudo -n podman images 2>&1 || true
 
       - name: Validate the recipe
         run: bluebuild validate recipes/recipe.yaml
@@ -113,27 +113,9 @@ jobs:
         # from exactly that value, so the policy and the pushed reference agree
         # (criterion 28b).
         run: |
-          # --build-driver docker is load-bearing, not a preference.
-          #
-          # A GitHub runner ships podman 4.9.3. bluebuild takes a
-          # podman-in-podman path whenever the host podman is older than 5.0
-          # (process/drivers/podman_driver.rs:588), and when it does the built
-          # image lands in a storage the job's own podman cannot read. Every
-          # in-image gate then fails with "image not known" or a 403 while
-          # bluebuild has plainly logged, correctly, that it finished building —
-          # five CI cycles were spent on that before the version was read.
-          #
-          # Docker is preinstalled on the runner, needs no podman at all, and
-          # has a complete bluebuild driver (build_tag_push and manifest_create
-          # in docker_driver.rs). So the build writes to the docker daemon and
-          # the gates read from the docker daemon — the same storage by
-          # construction rather than by coincidence.
-          #
-          # podman is still used above, to pull the bluebuild installer image:
-          # pulling and creating containers works fine; it is podman's *build*
-          # storage that bluebuild routes elsewhere on podman < 5.
           bluebuild -vv build \
             --build-driver docker \
+            --archive "${ARCHIVE_DIR}" \
             --registry ghcr.io --registry-namespace "${OWNER,,}" \
             --skip-validation recipes/recipe.yaml
 
@@ -149,6 +131,45 @@ jobs:
       #
       # Fail-closed: if no platform instance is found, this step dies rather than
       # leaving the gates to run against something unexpected.
+      # bluebuild's docker driver deliberately does NOT put the image in the
+      # local image store on a GitHub runner: docker_driver.rs only passes
+      # `--load` when GITHUB_ACTIONS is *unset*, because upstream expects the
+      # result to be pushed. Without `--push` the image lives only in the buildx
+      # builder's content store, where neither `podman images` nor
+      # `docker images` can see it -- which is why bluebuild could log
+      # "Finished building" with all five tags while every gate found nothing.
+      #
+      # The supported way to get the image back out without pushing is
+      # `--archive`, which switches the driver to `--output type=oci,dest=FILE`.
+      # The result is an OCI archive on disk rather than something in a daemon
+      # nobody reads. It is loaded into podman here, once, so the gates again run
+      # against a real local image -- the storage-sharing property the plan's
+      # `--pull=never` gates assume.
+      - name: Load the built image into podman
+        run: |
+          set -euo pipefail
+          echo "::group::archive directory"
+          mkdir -p "$ARCHIVE_DIR"
+          ls -la "$ARCHIVE_DIR"
+          echo "::endgroup::"
+          ARCHIVE=$(find "$ARCHIVE_DIR" -maxdepth 1 -type f -name '*.tar' | head -1)
+          if [ -z "$ARCHIVE" ]; then
+            echo "::error::bluebuild produced no .tar under $ARCHIVE_DIR"
+            exit 1
+          fi
+          echo "loading $ARCHIVE"
+          # podman load prints the ref it loaded. That is the only place the
+          # name is available: the archive output path applies no -t tag.
+          podman load -i "$ARCHIVE" | tee /tmp/podman-load.out
+          LOADED=$(sed -n 's/^Loaded image.*: //p' /tmp/podman-load.out | head -1)
+          if [ -z "$LOADED" ]; then
+            echo "::error::could not read a loaded image name from podman load"
+            cat /tmp/podman-load.out
+            exit 1
+          fi
+          echo "loaded as $LOADED"
+          podman tag "$LOADED" "ghcr.io/${REPO,,}:latest"
+
       - name: Resolve the built image to a runnable ref
         # bluebuild reports `ghcr.io/<owner>/<repo>:latest` as built, yet that ref
         # is not always directly runnable: what lands on it can be a manifest
@@ -180,10 +201,10 @@ jobs:
           PREFIX="${REPO_REF}:"
 
           echo "::group::what podman holds"
-          docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' || true
+          podman images --format '{{.Repository}}:{{.Tag}} {{.Size}}' || true
           echo "::endgroup::"
 
-          CANDS=$(docker images --format '{{.Repository}}:{{.Tag}}' \
+          CANDS=$(podman images --format '{{.Repository}}:{{.Tag}}' \
                     | grep -F "$PREFIX" || true)
           if [ -z "$CANDS" ]; then
             echo "::error::no image under $PREFIX after the build"
@@ -192,7 +213,7 @@ jobs:
 
           RUNNABLE=""
           for cand in $CANDS; do
-            if docker run --rm "$cand" true >/dev/null 2>&1; then
+            if podman run --rm --pull=never "$cand" true >/dev/null 2>&1; then
               RUNNABLE="$cand"
               break
             fi
@@ -206,12 +227,12 @@ jobs:
           echo "runnable ref: $RUNNABLE"
 
           if [ "$RUNNABLE" != "$REF" ]; then
-            docker tag "$RUNNABLE" "$REF"
+            podman tag "$RUNNABLE" "$REF"
             echo "tagged $RUNNABLE -> $REF"
           fi
           # Fail closed: prove the canonical ref the gates and the save use really
           # runs, rather than discovering it three steps later.
-          docker run --rm "$REF" true \
+          podman run --rm --pull=never "$REF" true \
             || { echo "::error::$REF still is not runnable"; exit 1; }
 
       # Gate 1 of 4 on the image (criterion 28). `niri validate` is not runnable
@@ -229,7 +250,7 @@ jobs:
       # was just built, and only what was just built.
       - name: niri validate inside the image
         run: |
-          docker run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             niri validate --config /etc/niri/config.kdl
 
       # Gate 2 of 4 (criterion 28). The only check that can see a `files`
@@ -238,7 +259,7 @@ jobs:
       # exits 0. Thirteen paths, one && chain, the §5.2 list in order.
       - name: files.yaml presence chain
         run: |
-          docker run --rm "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/xdg/xdg-desktop-portal/portals.conf && test -f /etc/greetd/config.toml && test -f /etc/systemd/logind.conf.d/kinrin.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf && test -f /usr/lib/systemd/user/niri-vrr.service && test -f /etc/environment.d/90-dms.conf && test -f /usr/share/dms/cli-policy.json && test -f /etc/skel/.config/niri/local.kdl && test -f /etc/skel/.config/DankMaterialShell/settings.json'
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/xdg/xdg-desktop-portal/portals.conf && test -f /etc/greetd/config.toml && test -f /etc/systemd/logind.conf.d/kinrin.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf && test -f /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf && test -f /usr/lib/systemd/user/niri-vrr.service && test -f /etc/environment.d/90-dms.conf && test -f /usr/share/dms/cli-policy.json && test -f /etc/skel/.config/niri/local.kdl && test -f /etc/skel/.config/DankMaterialShell/settings.json'
 
       # Gate 3 of 4 (criterion 28b) + the two greps the prompt adds (§5). Read the
       # signing policy out of the image rather than asserting it: an absent policy
@@ -246,9 +267,9 @@ jobs:
       # goes to stderr and the jq below cannot fail on it.
       - name: Read the signing policy out of the built image
         run: |
-          docker run --rm "ghcr.io/${REPO,,}:latest" sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
-          docker run --rm "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/containers/policy.json || exit 1'
-          docker run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c 'test -f /etc/containers/policy.json || exit 1'
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             jq -r '.transports.docker | keys[]' /etc/containers/policy.json
           # ASSERT, do not merely print. The policy key is the recipe `name:`
           # joined to the build registry, while the push target is
@@ -256,14 +277,14 @@ jobs:
           # image ships a verification policy covering a reference nothing
           # publishes, and boot-time verification of the published image resolves
           # nothing. Printing the key would have passed on a mismatch; this fails.
-          docker run --rm "ghcr.io/${REPO,,}:latest" sh -c \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c \
             'jq -e --arg r "ghcr.io/${REPO,,}" ".transports.docker | has(\$r)" /etc/containers/policy.json'
 
       - name: os-release carries ID=kinrin and ID_LIKE=fedora
         run: |
-          docker run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             grep -qE '^ID="?kinrin"?$' /etc/os-release
-          docker run --rm "ghcr.io/${REPO,,}:latest" \
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
             grep -qE '^ID_LIKE="?fedora"?$' /etc/os-release
 
       # Hand the image to the publish job. Each job gets a FRESH runner, so
@@ -274,7 +295,7 @@ jobs:
       # publish job fails later with a confusing error instead of here.
       - name: Save the image
         run: |
-          set -o pipefail && docker save "ghcr.io/${REPO,,}:latest" | zstd -T0 > kinrin.tar
+          set -o pipefail && podman save "ghcr.io/${REPO,,}:latest" | zstd -T0 > kinrin.tar
 
       - uses: actions/upload-artifact@v4
         with:
@@ -325,7 +346,7 @@ jobs:
       # `skopeo copy` to read — and the digest step is downstream and never
       # reached. That is a different failure from an empty digest.
       - name: Load the image
-        run: docker load -i kinrin.tar
+        run: podman load -i kinrin.tar
 
       - name: Log in to GHCR
         run: skopeo login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
@@ -337,15 +358,12 @@ jobs:
         run: echo "tag=$(date +%F)" >> "$GITHUB_OUTPUT"
 
       - name: Publish
-        # The source is `docker-daemon:`, NOT `docker://` — the latter is a
-        # *registry* reference and fails with `connection refused` against a
-        # local daemon. It is `docker-daemon:` rather than `containers-storage:`
-        # because the build runs on bluebuild's docker driver: see the note on
-        # the build step for why podman cannot be used on a GitHub runner.
+        # The source is `containers-storage:`, NOT `docker://` — the latter is a
+        # *registry* reference and fails with `connection refused` on a runner.
         # Two copies because one copy pushes one tag.
         run: |
-          skopeo copy --all "docker-daemon:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:latest"
-          skopeo copy --all "docker-daemon:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:${{ steps.meta.outputs.tag }}"
+          skopeo copy --all "containers-storage:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:latest"
+          skopeo copy --all "containers-storage:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:${{ steps.meta.outputs.tag }}"
 
       # AFTER the push, and read back from the registry: `skopeo copy` rewrites
       # the layers, so the local manifest digest is not the one the registry
