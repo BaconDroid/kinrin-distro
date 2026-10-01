@@ -108,18 +108,63 @@ jobs:
       # Fail-closed: if no platform instance is found, this step dies rather than
       # leaving the gates to run against something unexpected.
       - name: Resolve the built image to a runnable ref
+        # bluebuild reports `ghcr.io/<owner>/<repo>:latest` as built, yet that ref
+        # is not always directly runnable: what lands on it can be a manifest
+        # list, with the platform image as a separate `:latest_<arch>` ref. A
+        # manifest-list ref cannot be run directly, and without --pull podman
+        # resolves it through the REGISTRY — which serves the PREVIOUS published
+        # image, so every gate would go green on the last good build while this
+        # one is broken. That is the exact false green the plan spends most of
+        # its length ruling out.
+        #
+        # So the tag layout is not assumed: every ref bluebuild left under this
+        # repository is PROBED for runnability and the first that actually runs
+        # wins. A naming convention that guessed wrong would fail here; a probe
+        # cannot.
+        #
+        # No `set -e` on this step, and every grep ends in `|| true`: a grep that
+        # matches nothing exits 1, which under `set -e` kills the step before it
+        # can print what it found. That is the same fail-closed-looking,
+        # fail-silent shape PLAN §3.2 warns about for `flatpak remotes | grep`.
         run: |
-          set -euo pipefail
+          set -uo pipefail
           REF="ghcr.io/${REPO,,}/kinrin:latest"
-          PREFIX="ghcr.io/${REPO,,}/kinrin:"
-          SRC=$(podman images --format '{{.Repository}}:{{.Tag}}' \
-                  | grep -F "$PREFIX" | grep -E '_linux_amd64$' | head -1)
-          if [ -n "$SRC" ] && [ "$SRC" != "$REF" ]; then
-            podman tag "$SRC" "$REF"
-            echo "tagged platform instance $SRC -> $REF"
+          PREFIX="ghcr.io/${REPO,,}/kinrin"
+
+          echo "::group::what podman holds"
+          podman images --format '{{.Repository}}:{{.Tag}} {{.Size}}' || true
+          echo "::endgroup::"
+
+          CANDS=$(podman images --format '{{.Repository}}:{{.Tag}}' \
+                    | grep -F "$PREFIX" || true)
+          if [ -z "$CANDS" ]; then
+            echo "::error::no image under $PREFIX after the build"
+            exit 1
           fi
-          podman run --rm --pull=never "$REF" true
-          podman images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -F "$PREFIX"
+
+          RUNNABLE=""
+          for cand in $CANDS; do
+            if podman run --rm --pull=never "$cand" true >/dev/null 2>&1; then
+              RUNNABLE="$cand"
+              break
+            fi
+            echo "not runnable: $cand"
+          done
+
+          if [ -z "$RUNNABLE" ]; then
+            echo "::error::no ref under $PREFIX is runnable without pulling"
+            exit 1
+          fi
+          echo "runnable ref: $RUNNABLE"
+
+          if [ "$RUNNABLE" != "$REF" ]; then
+            podman tag "$RUNNABLE" "$REF"
+            echo "tagged $RUNNABLE -> $REF"
+          fi
+          # Fail closed: prove the canonical ref the gates and the save use really
+          # runs, rather than discovering it three steps later.
+          podman run --rm --pull=never "$REF" true \
+            || { echo "::error::$REF still is not runnable"; exit 1; }
 
       # Gate 1 of 4 on the image (criterion 28). `niri validate` is not runnable
       # bare: the binary is absent from a GitHub runner, and a host-side call
