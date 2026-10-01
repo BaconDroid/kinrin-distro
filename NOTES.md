@@ -1134,28 +1134,74 @@ Verified by execution on this machine:
   `- type: signing` last, exactly as §5 requires, and the CI workflow builds the
   unmodified recipe.
 
-### The one thing left, as a single sequence
+### The one thing left, and why the first attempt at it closed the tab
 
-Everything else in this file is done. The publication is not, and it is one
-sequence — generate the pair, hand the private half to CI, commit the public half
-as a build input, let the push start CI. `README.md` § "Publish it" carries it
-with the reasoning; the short form:
+The publication is not done, and it is one script: `~/Projects/kinrin-publish.sh`,
+run as a script. `README.md` § "Publish it" carries the reasoning.
 
-```bash
-cd ~/Projects/kinrin-distro
-set -euo pipefail
-REPO=BaconDroid/kinrin-distro
+**Why a file and not a paste.** The first attempt was a block starting with
+`set -euo pipefail`, pasted into an interactive shell. Nothing ran: no
+`cosign.pub`, no secret, nothing committed, and the tab was gone. In an
+interactive shell `set -e` terminates the *shell* on the first non-zero exit, so
+one failure silently discards the rest of the sequence and takes the terminal
+with it. Inside a script the same `set -e` can only end the script, which is
+where the error message actually lands. That is the whole reason the sequence is
+a file. It is idempotent, refuses to regenerate a key whose public half is
+already committed (that would orphan the secret CI holds), and has a `--dry-run`
+mode — itself tested here, because a dry run that asserts a state it did not
+create is worse than no dry run.
 
-COSIGN_PASSWORD="" cosign generate-key-pair --output-key-prefix cosign
-gh secret set COSIGN_PRIVATE_KEY --repo "$REPO" < cosign.key
-shred -u cosign.key
+**`COSIGN_PASSWORD=""` was never the problem**, which is worth recording because
+it was my first suspicion and it was wrong. cosign v3.1.3, read at tag `v3.1.3`
+(`11926fa5bbbbde47e88fc006b625a17769b743b2`):
 
-git add cosign.pub
-git commit -m 'Add the cosign public half: the build input the signing module requires'
-git push origin "$REPO"
-
-gh run watch --repo "$REPO" --exit-status
+```go
+// cmd/cosign/cli/generate/generate_key_pair.go:130-147
+func readPasswordFn(confirm bool) func() ([]byte, error) {
+	pw, ok := env.LookupEnv(env.VariablePassword)
+	switch {
+	case ok:
+		return func() ([]byte, error) { return []byte(pw), nil }
+	case cosign.IsTerminal():
+		return func() ([]byte, error) { return cosign.GetPassFromTerm(confirm) }
+	default:
+		return func() ([]byte, error) { return io.ReadAll(os.Stdin) }
+	}
+}
 ```
+
+The guard is `case ok:` — **presence, never non-emptiness**. `os.LookupEnv`
+returns `("", true)` for a present-but-empty variable, so `COSIGN_PASSWORD=""`
+takes that arm and there is no prompt. Upstream asserts it:
+`generate_key_pair_test.go:38-47` sets `COSIGN_PASSWORD` to the empty string and
+requires `readPasswordFn(true)` to return an empty slice. Absent the variable,
+the prompt reads `syscall.Stdin` — the controlling terminal — **twice**
+(`pkg/cosign/common.go:28-53`), which is why the prefix form (which exports) is
+required rather than `COSIGN_PASSWORD=""` followed by a semicolon, which does
+not.
+
+**And piping blank lines as a belt-and-braces would have been actively
+harmful**, which is the part worth having checked rather than guessed: the only
+prompt that reads piped stdin is the overwrite confirm, whose default is **N**
+(`internal/ui/prompt.go:44-65`, "Are you sure you would like to continue? [y/N] "),
+so empty input declines and aborts the command.
+
+The generated key is an `ENCRYPTED SIGSTORE PRIVATE KEY` PEM
+(`pkg/cosign/keys.go:205-213`, `encrypted.Encrypt` with no empty-passphrase
+short-circuit) — scrypt'd over an empty passphrase, i.e. wrapped but trivially
+recoverable. That is why the publish job needs no `COSIGN_PASSWORD` secret to
+match, and why the README states the trade-off rather than calling it secure.
+A passphrase-protected key needs `COSIGN_PASSWORD` added to the `Sign` step's
+`env:` block, or the run blocks on a prompt that never comes.
+
+`readPasswordFn` is byte-identical between v2.6.5 and v3.1.3 apart from the
+`cosign/v2/…` → `cosign/v3/…` import rewrite: no behaviour change on this point.
+
+**Visible in the API as well as the code:** with no packages scope the CLI
+cannot even list packages — `gh api /users/BaconDroid/packages` returns "You need
+at least read:packages scope to list packages" — which is why the visibility step
+is documented as a browser action rather than presented as something that was
+tried and worked.
 
 Three details that are not obvious and are the difference between this working
 and not:

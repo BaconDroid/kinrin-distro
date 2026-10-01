@@ -283,72 +283,96 @@ The risk is not the outage — it is not seeing it.
 
 ## Publish it
 
-Everything above builds and runs. This is the part that is **not** done yet, and
-it is one sequence: generate the key pair, hand the private half to CI as a
-secret, commit the public half as a build input, and let the push start CI.
+Everything above builds and runs. This is the part that is **not** done yet: the
+key pair was never generated, because the machine this was built on refused the
+write as a secret path and the correct response to that is to report it rather
+than route around it. Without the public half the `signing` module exits 1 at the
+**last** module, after the whole twenty-minute build.
+
+### One command
 
 ```bash
-cd ~/Projects/kinrin-distro
-set -euo pipefail
-REPO=BaconDroid/kinrin-distro
-
-# 1. The pair. COSIGN_PASSWORD="" writes an UNENCRYPTED key with no prompt —
-#    cosign otherwise blocks on an interactive password question. The publish
-#    job needs no COSIGN_PASSWORD secret to match, because the key is unencrypted.
-COSIGN_PASSWORD="" cosign generate-key-pair --output-key-prefix cosign
-
-# 2. The private half becomes a CI secret, then leaves the disk immediately.
-gh secret set COSIGN_PRIVATE_KEY --repo "$REPO" < cosign.key
-shred -u cosign.key
-
-# 3. The public half is a BUILD INPUT — the `signing` module cannot find it
-#    otherwise. Named explicitly: .gitignore is exactly `kinrin.tar`, so a
-#    blanket `git add` is the only way a private key could ever get in here.
-git add cosign.pub
-git commit -m 'Add the cosign public half: the build input the signing module requires'
-git push origin "$REPO"
-
-# 4. The push starts build.yml (on: push). Watch it to the end.
-gh run watch --repo "$REPO" --exit-status
+~/Projects/kinrin-publish.sh
 ```
 
-Then, once the run is green, make the GHCR package public — **GHCR creates it
-private**, and an unpublished package cannot be pulled even though the repository
-is public:
+Run it as a script — **do not paste it into an interactive shell.** `set -e` in
+an interactive shell terminates the terminal on the first non-zero exit, which
+closes the tab and loses the rest of the sequence; inside a script it can only
+end the script. That is the whole reason this exists as a file.
+
+It is safe to re-run: each step checks whether it is already done, and it
+**refuses to regenerate** the key when `cosign.pub` is already committed, because
+that would orphan the `COSIGN_PRIVATE_KEY` secret CI already holds. Add
+`--dry-run` to see what it would do and change nothing.
+
+It does: generate the pair → `COSIGN_PRIVATE_KEY` into the repo secret → shred
+the private half off disk → commit **only** `cosign.pub` → push, which starts
+`build.yml` → wait for the run. Then it prints the published digest and the
+`cosign verify` line to use against it.
+
+### Why the pieces are what they are
+
+- **`COSIGN_PASSWORD=""` is required, not cosmetic.** `cosign`'s `readPasswordFn`
+  tests `os.LookupEnv` for **presence** and never for non-emptiness
+  (`cmd/cosign/cli/generate/generate_key_pair.go:130-147` in v3.1.3), so an
+  exported empty value is honoured and there is no prompt — upstream has a test
+  asserting exactly that (`generate_key_pair_test.go:38-47`). Without the
+  variable, `cosign` reads the controlling **terminal** twice
+  (`pkg/cosign/common.go:28-53`), and a pipe cannot satisfy it. The result is an
+  **unencrypted** key: it is still an `ENCRYPTED SIGSTORE PRIVATE KEY` PEM, but
+  scrypt'd over an empty passphrase, which is why the publish job needs no
+  `COSIGN_PASSWORD` secret to match. If you would rather have a real passphrase,
+  generate with one and add `COSIGN_PASSWORD` to the `Sign` step's `env:` block
+  in `build.yml`, or the run blocks on a prompt that never comes.
+- **Do not pipe blank lines "for safety".** The only prompt that reads piped
+  stdin is the overwrite confirm, whose default is **N**
+  (`internal/ui/prompt.go:44-65`) — blank input would *decline* and abort the
+  command.
+- **The private half is shredded before the commit, not after.** It is on disk
+  from the first command until the second; deleting it immediately closes the
+  window instead of leaving it open until a later step happens to run.
+- **`git add cosign.pub` is named, never a blanket add.** `.gitignore` is
+  exactly `kinrin.tar` — required, and `*.pub` must never be ignored — so nothing
+  would stop a `git add -A` from staging the private key.
+
+### After the run is green
+
+Make the GHCR package public. **GHCR creates packages private**, and a public
+repository does not change that:
 
 ```
 https://github.com/users/BaconDroid/packages/container/kinrin-distro/settings
 ```
 
-Flip **Change visibility → Public**. It has to be done in the browser here: the
-CLI token in use carries `gist, read:org, repo, workflow` and **no packages
-scope**, so `gh api` on the package endpoint is refused. A token with
-`write:packages` can do it instead:
+Flip **Change visibility → Public**. It has to be the browser here: the CLI token
+in use carries `gist, read:org, repo, workflow` and **no packages scope**, so
+`gh api` on the package endpoint is refused. With a `write:packages` token:
 
 ```bash
 gh api -X PATCH /user/packages/container/kinrin-distro -f visibility=public
 ```
 
-Finally, record what was published — §6/§7's rollback needs the digest, and a
-date tag is only a record:
+Then verify against the digest, never a tag — no tag designates a stable image
+across builds:
 
 ```bash
 DIGEST=$(skopeo inspect --format '{{.Digest}}' docker://ghcr.io/bacondroid/kinrin-distro:latest)
-echo "digest: $DIGEST"
 cosign verify --key cosign.pub "ghcr.io/bacondroid/kinrin-distro@$DIGEST"
 ```
 
-`cosign verify` must pass here. If it does not, the image is **not** verifiable
-and the boot-time policy will resolve nothing — that is the whole point of the
-key, so treat a failure as a real defect rather than a warning.
-
-Afterwards, put the digest and the date tag into `NOTES.md` §5 so the next build
-knows which deployment a rollback should return to.
+`cosign verify` must pass. If it does not, the image is **not** verifiable and
+the boot-time policy resolves nothing — treat that as a real defect, not a
+warning. Record the digest and the date tag in `NOTES.md` §5 so the next build
+knows which deployment a rollback returns to.
 
 ### Re-running without a new key
 
-The key pair is generated **once**, not per build. To rebuild or re-publish,
-skip steps 1 and 2 and start at step 3, or dispatch CI directly:
+The key pair is generated **once**, not per build. `~/Projects/kinrin-publish.sh`
+is idempotent, so re-running it after the first publication does the right thing
+and nothing else: it finds `cosign.pub` already committed, leaves the key alone,
+and skips straight to the push.
+
+To rebuild or re-publish without touching the key at all, dispatch CI directly:
 
 ```bash
 gh workflow run build.yml --repo BaconDroid/kinrin-distro
