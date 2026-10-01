@@ -1,6 +1,12 @@
 # yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
 version: 1
-name: kinrin
+# The name must equal the repository name. §10: the `signing` module keys its
+# in-image verification policy from this name joined to the build registry, while
+# the publish job pushes to `ghcr.io/${{ github.repository }}`. If the two
+# differ, boot-time verification of the published image resolves nothing and
+# every `bootc switch` line names an image that was never pushed. Criterion 28b
+# is the check. Recorded in NOTES.md §2.5.
+name: kinrin-distro
 description: Fedora Kinoite with Niri and DankMaterialShell as the primary desktop
 # The tag comes from `image-version`, not from here: BlueBuild composes the base
 # reference as `{base-image}:{image-version}` (recipe/src/recipe_v1.rs:114), so a

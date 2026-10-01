@@ -344,7 +344,7 @@ confirmed against the source:
 - **Boot-time enrollment is host-side and out of the image.** Upstream's default
   is followed and no procedure is invented here.
 
-### 2.5 Repository name vs the recipe `name:` — **the repository is `kinrin-distro`; the recipe `name:` is set to match**
+### 2.5 Repository name vs the recipe `name:` — **both are `kinrin-distro`**
 
 §10 asks for a decision once, recorded here, checked by criterion 28b.
 
@@ -353,23 +353,37 @@ the build registry (`signing.sh:45-57`, confirmed):
 `jq --arg image_registry "$IMAGE_REGISTRY" --arg image_name "$IMAGE_NAME"
 '.transports.docker |= { ($image_registry + "/" + $image_name): [ … ] }'`, where
 `IMAGE_NAME` is `ARG IMAGE_NAME="{{ recipe.get_name() }}"`
-(`Containerfile.j2:21`). **The two names must therefore be the same**, or
-boot-time verification of the published reference resolves nothing.
+(`Containerfile.j2:21`). The publish job meanwhile pushes to
+`ghcr.io/${{ github.repository }}`. **The two names must be identical**, or
+boot-time verification of the published reference resolves nothing and every
+`bootc switch` line in the README names an image that was never pushed.
 
 The plan offers both branches: name the repository `kinrin`, or set the recipe
-`name:` to the repository name. **The second branch is taken**, because the name
-`kinrin` under this owner is already taken by the private specification
-repository this build started from. So:
+`name:` to the repository name. **The second branch is taken**, because
+`BaconDroid/kinrin` is already the private specification repository this build
+started from and the name cannot be reused. So:
 
 - repository: **`BaconDroid/kinrin-distro`**
-- recipe `name:` **`kinrin`** — unchanged from §5
+- recipe `name:` **`kinrin-distro`** — set to match
 
-and every published reference resolves to **`ghcr.io/bacondroid/kinrin`** in both
-the policy and the workflow. The distinction is confined to the GitHub repository
-name; the image reference, the recipe `name:`, the signing policy and the
-`files.yaml` destinations are all unaffected. `criterion 28b` is the check:
+Everything resolves to **`ghcr.io/bacondroid/kinrin-distro`** in the policy, in
+both pushed tags, in the README, and in every `bootc switch` line.
+
+**This was caught by self-review, not by a green build**, and it is worth saying
+so: the first version of this tree kept the recipe `name:` at the plan's `kinrin`
+while the repository was `kinrin-distro`. Everything validated, every gate in
+`build.yml` would still have passed, and the image would have shipped with a
+verification policy covering `ghcr.io/bacondroid/kinrin` — a reference nothing
+publishes. `bluebuild validate` cannot see this and neither can any of the six
+gates: the mismatch is only observable by comparing the recipe `name:` with
+`github.repository`, or by criterion 28b reading the key out of the built image.
+The plan's warning that "either name the repository `kinrin`, or set the recipe
+`name:` to the repository name — decide **once**" is exactly right, and the
+failure mode is invisible to every automated gate in the plan.
+
+The criterion 28b check, which is the one that would have caught it:
 `jq -r '.transports.docker | keys[]' /etc/containers/policy.json` must print
-`ghcr.io/bacondroid/kinrin`.
+`ghcr.io/bacondroid/kinrin-distro`.
 
 ### 2.6 `ID=kinrin` — kept, unchanged, with the residue stated
 

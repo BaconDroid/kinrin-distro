@@ -37,8 +37,8 @@ greetd ──▶ dms-greeter
 Over an existing Atomic Fedora — two forms, and the choice is deliberate:
 
 ```bash
-sudo bootc switch ghcr.io/bacondroid/kinrin:latest && sudo reboot          # discovery
-sudo bootc switch ghcr.io/bacondroid/kinrin@sha256:<digest> && sudo reboot # reproducible
+sudo bootc switch ghcr.io/bacondroid/kinrin-distro:latest && sudo reboot          # discovery
+sudo bootc switch ghcr.io/bacondroid/kinrin-distro@sha256:<digest> && sudo reboot # reproducible
 ```
 
 `:latest` is what you want when you do not know the current build and are
@@ -120,7 +120,7 @@ sudo systemctl disable --now bootc-fetch-apply-updates.timer
 To freeze a restore point — `bootc upgrade` is then a no-op — switch by digest:
 
 ```bash
-bootc switch ghcr.io/bacondroid/kinrin@sha256:<digest>
+bootc switch ghcr.io/bacondroid/kinrin-distro@sha256:<digest>
 bootc status -v | grep -i digest # record it; capital D in both output forms
 ```
 
@@ -164,20 +164,20 @@ or the repository. The **public** half is committed at the repository root as
 Verify what you actually installed, against the digest rather than a tag:
 
 ```bash
-cosign verify --key cosign.pub "ghcr.io/bacondroid/kinrin@sha256:<digest>"
+cosign verify --key cosign.pub "ghcr.io/bacondroid/kinrin-distro@sha256:<digest>"
 ```
 
 The image itself ships a **verification policy** that `bluebuild`'s `signing`
 module layers in at the last module. It is read, not assumed:
 
 ```bash
-podman run --rm ghcr.io/bacondroid/kinrin:latest \
+podman run --rm ghcr.io/bacondroid/kinrin-distro:latest \
   sh -c 'ls -l /etc/containers/policy.json /etc/containers/registries.d/ 2>&1'
-podman run --rm ghcr.io/bacondroid/kinrin:latest \
+podman run --rm ghcr.io/bacondroid/kinrin-distro:latest \
   jq -r '.transports.docker | keys[]' /etc/containers/policy.json
 ```
 
-That second command must print `ghcr.io/bacondroid/kinrin` — the reference
+That second command must print `ghcr.io/bacondroid/kinrin-distro` — the reference
 actually published. If it prints nothing, the module emitted nothing and the
 image does not verify. Boot-time enrollment of the key is host-side and follows
 upstream's default; there is no enrollment procedure to run here.
