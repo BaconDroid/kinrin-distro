@@ -1134,6 +1134,48 @@ Verified by execution on this machine:
   `- type: signing` last, exactly as §5 requires, and the CI workflow builds the
   unmodified recipe.
 
+### `--build-driver docker` plus `--archive`, forced by upstream's own source
+
+The plan's §6 CI text assumes the image bluebuild built is sitting in the local
+podman store when the gates start, so that `--pull=never` gates and a
+`podman save` handover can share one storage. On a GitHub runner that never
+happens, and not because of anything in this repository:
+
+- `process/drivers/docker_driver.rs:553` passes `--load` **only** when
+  `GITHUB_ACTIONS` is unset:
+
+  ```rust
+  ImageRef::Remote(_remote)
+      if get_env_var(GITHUB_ACTIONS).is_err()
+      && opts.platform.len() <= 1 => "--load",
+  ```
+
+  Upstream expects the result to be pushed. Without `--push` the image stays in
+  the buildx builder's content store, which is exactly what the failing run
+  showed: bluebuild logged `Finished building:` with all five tags while
+  `docker images` on the same runner listed only the runner's own images and
+  `moby/buildkit:buildx-stable-1`.
+- `--archive` is the supported escape: it switches the driver to
+  `--output type=oci,dest=FILE`, so the result is a file on disk instead of
+  something in a daemon nobody reads. The load step reads the ref back out of
+  `podman load`'s own stdout, because that output path applies no `-t` tag and
+  the name is therefore not knowable in advance.
+
+So the build job gains `--build-driver docker --archive`, plus one load step, and
+everything downstream is the plan's text unchanged — the `--pull=never` gates, the
+`podman save` handover, and `skopeo copy` from `containers-storage:` in the
+publish job. `--archive` is implemented only in the docker driver
+(`podman_driver.rs` has no `LocalTar` arm), so `--build-driver docker` is
+load-bearing for this reason, not as a preference.
+
+Worth recording as method, because it cost six cycles: the podman version and
+the podman-in-podman path (`podman_driver.rs:588`) are both real and both were
+worth knowing, but neither caused the missing image. Three symptoms — "image not
+known", a 403, and "no image after the build" — were read as three environment
+differences when they were one upstream behaviour. The runner reports that podman
+is 4.9.3 in a job that finishes in under a minute; reading a version number would
+have cost one cycle instead of three.
+
 ### The one thing left, and why the first attempt at it closed the tab
 
 The publication is not done, and it is one script: `~/Projects/kinrin-publish.sh`,
