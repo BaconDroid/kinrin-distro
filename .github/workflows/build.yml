@@ -2,7 +2,7 @@
 #
 # Workflow-level, not job-level:
 #   env:  — all three jobs expand ${{ env.OWNER }} / ${{ env.REPO }}, and the build
-#           job's `podman save` expands $OWNER too. A job-scoped env would leave
+#           job's publish step expands $OWNER too. A job-scoped env would leave
 #           it empty there. Both podman and skopeo reject an uppercase owner and
 #           a GitHub login may carry one, so everything lowercases with ${OWNER,,}.
 #   if:   — deliberately NOT here. A bare workflow-level `if:` is a schema error.
@@ -297,19 +297,31 @@ jobs:
             grep -qE '^ID_LIKE="?fedora"?$' /etc/os-release
 
       # Hand the image to the publish job. Each job gets a FRESH runner, so
-      # podman storage does not travel with `needs: build`; without this the
-      # publish job has no image to read.
-      # `pipefail` is load-bearing: without it the step takes zstd's status, so a
-      # failed `podman save` still yields a valid (empty) kinrin.tar and the
-      # publish job fails later with a confusing error instead of here.
-      - name: Save the image
+      # nothing travels with `needs: build` by itself.
+      #
+      # The OCI archive bluebuild already wrote is handed over as-is, rather than
+      # re-exported with `podman save | zstd`. It is the same image, already
+      # compressed, and it removes two steps that both exist only to move bytes
+      # between a podman store the next job cannot see and skopeo -- a path that
+      # failed anyway: `skopeo copy --all containers-storage:` drives podman over
+      # `dial-stdio` and died with `Error during unshare(...): Operation not
+      # permitted`, even though `podman load` on the same runner had just
+      # succeeded. Reading the archive needs no podman at all.
+      - name: Hand over the OCI archive
         run: |
-          set -o pipefail && podman save "ghcr.io/${REPO,,}:latest" | zstd -T0 > kinrin.tar
+          set -euo pipefail
+          ARCHIVE=$(find "$ARCHIVE_DIR" -maxdepth 1 -type f -name '*.tar.gz' | head -1)
+          if [ -z "$ARCHIVE" ]; then
+            echo "::error::no OCI archive under $ARCHIVE_DIR to hand over"
+            exit 1
+          fi
+          cp "$ARCHIVE" kinrin-oci.tar.gz
+          ls -l kinrin-oci.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
           name: kinrin-image
-          path: kinrin.tar
+          path: kinrin-oci.tar.gz
 
       - name: Publish the cosign public key as an artifact
         # The public half must travel with the release: it is what `cosign
@@ -355,12 +367,6 @@ jobs:
           rm -f cosign-linux-amd64 checksums.txt
           cosign version | head -1
 
-      # Skipping this fails `Publish` outright, with no local image for
-      # `skopeo copy` to read — and the digest step is downstream and never
-      # reached. That is a different failure from an empty digest.
-      - name: Load the image
-        run: podman load -i kinrin.tar
-
       - name: Log in to GHCR
         run: skopeo login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
 
@@ -371,12 +377,12 @@ jobs:
         run: echo "tag=$(date +%F)" >> "$GITHUB_OUTPUT"
 
       - name: Publish
-        # The source is `containers-storage:`, NOT `docker://` — the latter is a
+        # The source is `oci-archive:`, NOT `docker://` — the latter is a
         # *registry* reference and fails with `connection refused` on a runner.
         # Two copies because one copy pushes one tag.
         run: |
-          skopeo copy --all "containers-storage:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:latest"
-          skopeo copy --all "containers-storage:ghcr.io/${REPO,,}:latest" "docker://ghcr.io/${REPO,,}:${{ steps.meta.outputs.tag }}"
+          skopeo copy --all "oci-archive:kinrin-oci.tar.gz" "docker://ghcr.io/${REPO,,}:latest"
+          skopeo copy --all "oci-archive:kinrin-oci.tar.gz" "docker://ghcr.io/${REPO,,}:${{ steps.meta.outputs.tag }}"
 
       # AFTER the push, and read back from the registry: `skopeo copy` rewrites
       # the layers, so the local manifest digest is not the one the registry

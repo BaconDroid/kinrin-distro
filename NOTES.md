@@ -1154,6 +1154,30 @@ it listed `ghcr.io/bacondroid/kinrin-distro` as a key, with
 container ever sees the argument. Worth recording because the failure presented as
 a build problem and was not one.
 
+### The handover no longer round-trips through a podman store
+
+`podman load` in the publish job succeeded, and the very next step failed:
+
+```
+Loaded image: ghcr.io/bacondroid/kinrin-distro:latest
+Error during unshare(...): Operation not permitted
+```
+
+`skopeo copy --all containers-storage:...` reaches podman's store through
+`dial-stdio`, which needs a user namespace the runner does not grant that code
+path. So the failure was not the image, the login, or the artifact: it was the
+`containers-storage:` read, on a runner where podman itself worked fine one line
+earlier.
+
+The fix removes the dependency instead of working around it. bluebuild's
+`--archive` already produced a gzipped OCI archive on disk, so that file is now
+the artifact and the publish job reads it as `oci-archive:` — no `podman save`,
+no `podman load`, and no podman in the publish job at all. Same image, one fewer
+copy, and a transport that is a file read.
+
+The build job still loads the archive into podman, because the gates have to run
+against a real local image; only the *handover* changed.
+
 ### `sha256sum --check` needs the file's real name
 
 The cosign install step downloaded the release binary as `cosign`, then verified
