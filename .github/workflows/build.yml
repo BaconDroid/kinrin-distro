@@ -15,6 +15,28 @@ name: build
 
 on:
   push:
+    # Only a change that can alter the IMAGE rebuilds it. Without this filter a
+    # typo fix in README.md spends a full container build, republishes `:latest`,
+    # and mints a release whose digest differs from the last one for no change to
+    # the artefact — three publications of the same operating system wearing
+    # different digests, which is exactly the ambiguity the digest exists to
+    # remove.
+    #
+    # These four paths are the whole build input, checked against the tree rather
+    # than guessed: the recipe and its eight modules, the 13 staged files, the
+    # public key the `signing` module signs with, and this workflow.
+    #
+    # IF YOU ADD A BUILD INPUT OUTSIDE THESE PATHS, ADD IT HERE. A path filter is
+    # silent: a recipe that reads a file nobody listed stops rebuilding on change
+    # and the failure looks like "CI is flaky", not like a missing path.
+    paths:
+      - 'recipes/**'
+      - 'files/**'
+      - 'cosign.pub'
+      - '.github/workflows/build.yml'
+  # Deliberately NOT path-filtered. The schedule exists to notice that the
+  # unpinned `:latest` base moved under us, which by definition involves no
+  # commit at all — filtering this trigger would defeat its only purpose.
   schedule:
     # Monthly. The base follows `:latest` and is never pinned, so a monthly run
     # is the only thing that detects upstream drift.
