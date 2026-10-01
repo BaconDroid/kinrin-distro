@@ -640,12 +640,17 @@ jobs:
       - name: Install bluebuild
         run: |
           set -euo pipefail
-          REF=ghcr.io/blue-build/cli:v0.9.37
-          DIGEST=$(skopeo inspect --format '{{.Digest}}' "docker://$REF")
-          podman create --name bb-install "$REF@$DIGEST"
-          podman cp bb-install:/out/bluebuild /tmp/bb
+          # Byte-for-byte the same pinned install the build job uses. This step
+          # first resolved the tag with `skopeo inspect` and then copied from
+          # `/out/bluebuild`, which does not exist there; the working step pins the
+          # digest directly. One installer recipe for the whole workflow.
+          REF="ghcr.io/blue-build/cli@sha256:281d3152c1a4e30e75e777f78b07a8c5c1e5130cb44092f4b4b507402556ec0a"
+          sudo mkdir -p /opt/bb
+          podman create --name bb-install "$REF"
+          podman cp bb-install:/out/bluebuild /opt/bb/bluebuild
           podman rm bb-install
-          sudo install -m 0755 /tmp/bb /usr/local/bin/bluebuild
+          sudo install -m 0755 /opt/bb/bluebuild /usr/local/bin/bluebuild
+          rm -rf /opt/bb
           bluebuild --version | grep -q 'BlueBuild 0.9.37'
 
       - name: Generate the ISO from the published image
