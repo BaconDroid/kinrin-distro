@@ -1350,6 +1350,12 @@ step that was tried and worked.
 
 ## 6. Published and verified
 
+> The releases created during this session (`v44.1.0` … `v44.1.5`) were deleted
+> when the trim in §7 was reverted, and their tags removed with them, so the
+> version numbering restarts. The runs, the digests and the verifications below
+> were real and remain a record of what was checked; the releases that pointed at
+> them are gone.
+
 Run `36821596275` — `validate`, `build` and `publish` all green — published and
 signed the image, and it was then checked from outside CI:
 
@@ -1424,7 +1430,9 @@ typo failed a build before the repositories were queried.
 ## 8. The ISO: measured, and why it is not a release asset
 
 `bluebuild generate-iso image <ref>` builds the installer and the job reports its
-size. Measured, from run `36899441370`:
+size. The `iso` job prints it on every green build; the figures below come from
+run `36899441370`, which built the **trimmed** revision described in §7 and has
+since been reverted, so they are a floor rather than the current value:
 
 | Quantity | Value |
 | -------- | ----- |
@@ -1433,8 +1441,10 @@ size. Measured, from run `36899441370`:
 | GitHub release-asset cap | 2 GiB |
 | ISO structure | valid — `CD001` at offset 32769, volume `kinrin-x86_64-latest` |
 
-So the ISO is real, bootable and downloadable, and it is **2.7 GiB over** what
-GitHub will accept as a release asset. The release job therefore publishes
+The structure and the mechanism are what this section is for, and both hold. The
+size does not: with Discord, Orca and the toolchain restored the ISO is larger
+again, so treat 4.74 GiB as the smallest it has been measured at, and read the
+live figure from the job output. The release job therefore publishes
 `cosign.pub` only and says so with a warning, rather than calling
 `gh release create` with an oversized file — that would fail *after* the release
 exists, leaving a release with no ISO and no error to explain it.
@@ -1471,9 +1481,11 @@ with a half-installed system, is not idempotent, and gains nothing — since
 `glibc-langpack-fr` is already in the enabled repositories and
 `dnf install glibc-langpack-xx` does the same job with no script.
 
-### What the trim did achieve
+### What survives of the trim
 
-Trimming the image from the first release (4.52 GB) to this one (3.88 GB) moved
-the ISO from an untested code path to a generated, checksummed, downloadable
-artefact. Combined with the version scheme and the signature, the ISO is now a
-verifiable artefact — just one GitHub will not host under 2 GiB.
+Not the size: the image is back to the full recipe and the ISO is larger than the
+figure above. What survives is the machinery, which is the part that was missing
+before any trimming was attempted — `generate-iso` running from the published
+image, the measured size surfaced as a job output, the release attaching the ISO
+when it fits and warning when it does not, and the download link in the release
+notes. Before that, there was no ISO at all.

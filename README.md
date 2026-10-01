@@ -444,8 +444,14 @@ Two different things, and the difference matters:
 
 | What | Where | Size |
 | ---- | ----- | ---- |
-| **Container image** | `ghcr.io/bacondroid/kinrin-distro` | 3.88 GB compressed |
-| **Bootable ISO** | the `iso` job's artifact, on each green run | 4.74 GiB |
+| **Container image** | `ghcr.io/bacondroid/kinrin-distro` | ~4.5 GB compressed |
+| **Bootable ISO** | the `iso` job's artifact, on each green run | larger than the image |
+
+The exact ISO size is **measured on every green build** and printed by the `iso`
+job, rather than written down here — it moves as the recipe does. The figure
+this page carried previously (4.74 GiB) was measured on a revision that has since
+been reverted, so quoting it would be quoting a number for an artefact that no
+longer exists. Read it from the run, or from `NOTES.md` §8.
 
 The image is the normal way to run it, and it is what the Release points at:
 
@@ -459,8 +465,8 @@ could produce something other than what was gated and signed. It is a real
 bootable ISO (`CD001` at offset 32769, volume `kinrin-x86_64-latest`).
 
 **The ISO is not attached to the Release, and that is a GitHub limit, not an
-oversight.** GitHub caps a release asset at 2 GiB; the ISO is 4.74 GiB, so it
-ships as a workflow artifact instead. Download it with:
+oversight.** GitHub caps a release asset at 2 GiB and a full desktop ISO is well
+over that, so it ships as a workflow artifact instead. Download it with:
 
 ```sh
 gh run download <run-id> -n kinrin-iso -D .
