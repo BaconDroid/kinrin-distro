@@ -1472,3 +1472,60 @@ I stated that the compressed OCI size (4.52 GB) was what decided DVD fit, with a
 rootfs, and the 4.7 GB DVD figure is decimal while 4.52 was not stated in the same
 units. The measured number comes from the `iso` job, which writes it to
 `$GITHUB_OUTPUT` and warns when it exceeds 2 GiB.
+
+## 8. The ISO: measured, and why it is not a release asset
+
+`bluebuild generate-iso image <ref>` builds the installer and the job reports its
+size. Measured, from run `36899441370`:
+
+| Quantity | Value |
+| -------- | ----- |
+| ISO (`deploy.iso`) | 5 092 212 736 B = **4.74 GiB** |
+| artifact `kinrin-iso` | 5 050 159 141 B (zipped) |
+| GitHub release-asset cap | 2 GiB |
+| ISO structure | valid — `CD001` at offset 32769, volume `kinrin-x86_64-latest` |
+
+So the ISO is real, bootable and downloadable, and it is **2.7 GiB over** what
+GitHub will accept as a release asset. The release job therefore publishes
+`cosign.pub` only and says so with a warning, rather than calling
+`gh release create` with an oversized file — that would fail *after* the release
+exists, leaving a release with no ISO and no error to explain it.
+
+### The size reductions that were measured and rejected
+
+Every figure below is zstd on the real directory, which is the same codec the
+installer squashes with. Raw sizes are misleading here and I quoted one earlier
+without saying so:
+
+| Candidate | Raw | **Real gain** |
+| --------- | --- | ------------- |
+| Locales (617 Mo, 699 languages) → `en`+`fr` | 591 Mo | **~110 Mo** |
+| `man` (8 877 pages, already `.gz`) | 43 Mo | **~19 Mo** |
+| `steam` + `steam-devices` (20 Mo of RPM) | 20 Mo | **~10 Mo** |
+| kde/plasma in full | 748 Mo | ~250 Mo |
+
+Locales compress 617 Mo down to 161 Mo — keeping 25 Mo of them buys about 110 Mo,
+not the 591 Mo the raw figure suggests. `man` pages are already gzipped, so they
+are close to incompressible.
+
+**Steam is nearly free.** The RPMs total 20 Mo; the ~1 Go client is downloaded on
+first launch, not embedded. Removing Steam to save space removes the main reason
+the image exists for roughly nothing.
+
+Cumulatively, everything above is ~650 Mo against a 2 740 Mo gap. There is no
+path to 2 GiB that leaves a working desktop in place.
+
+### Why there is no "download the locales during install" script
+
+It was proposed and it is the wrong design, independent of the size arithmetic:
+an installer that needs the network to finish leaves users on an offline machine
+with a half-installed system, is not idempotent, and gains nothing — since
+`glibc-langpack-fr` is already in the enabled repositories and
+`dnf install glibc-langpack-xx` does the same job with no script.
+
+### What the trim did achieve
+
+Trimming the image from the first release (4.52 GB) to this one (3.88 GB) moved
+the ISO from an untested code path to a generated, checksummed, downloadable
+artefact. Combined with the version scheme and the signature, the ISO is now a
+verifiable artefact — just one GitHub will not host under 2 GiB.
