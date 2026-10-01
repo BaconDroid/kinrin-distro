@@ -489,7 +489,10 @@ jobs:
   # and verify commands, and cosign.pub — everything needed to fetch and check it,
   # with the image itself staying in the registry where it is actually immutable.
   release:
-    needs: [build, publish]
+    # `iso` is a hard dependency on purpose. A release whose ISO silently failed
+    # to build is a release that looks complete and is not; failing closed here
+    # keeps "the Release has a bootable ISO" a true statement every time.
+    needs: [build, publish, iso]
     runs-on: ubuntu-latest
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     permissions:
@@ -505,6 +508,13 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+
+      # The ISO travels from the job that built it as an artifact, so the release
+      # never has to regenerate it.
+      - uses: actions/download-artifact@v4
+        with:
+          name: kinrin-iso
+          path: iso-asset
 
       - name: Compute the version
         id: ver
@@ -562,6 +572,8 @@ jobs:
           DIGEST: ${{ needs.publish.outputs.digest }}
           FEDORA: ${{ needs.build.outputs.fedora }}
           DMS: ${{ needs.build.outputs.dms }}
+          ATTACHABLE: ${{ needs.iso.outputs.attachable }}
+          ISO_GIB: ${{ needs.iso.outputs.gib }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -600,13 +612,31 @@ jobs:
           read out of the built image, so they cannot drift from its contents.
           EOF
 
+          # Assets are passed as trailing arguments. The ISO is added only when it
+          # fits GitHub's 2 GiB release-asset cap: passing an oversized file makes
+          # `gh release create` fail AFTER the release exists, which leaves a
+          # release published with no ISO and no error to explain it.
+          assets=(cosign.pub)
+          if [ "$ATTACHABLE" = "true" ]; then
+            iso=$(find iso-asset -type f -name '*.iso' | head -1)
+            if [ -n "$iso" ]; then
+              echo "attaching ISO: $iso"
+              assets+=("$iso")
+            else
+              echo "::error::attachable was true but no .iso was downloaded"
+              exit 1
+            fi
+          else
+            echo "::warning::ISO is $ISO_GIB GiB, over the 2 GiB cap; shipping as a workflow artifact instead"
+          fi
+
           # The tag is pinned to the commit that produced it, not to the branch
           # head, so a release always names the tree it was built from.
           gh release create "$VERSION" \
             --title "KinRin $VERSION (Fedora $FEDORA, dms $DMS)" \
             --target "$GITHUB_SHA" \
             --notes-file notes.md \
-            cosign.pub
+            "${assets[@]}"
 
           echo "created $VERSION -> $DIGEST"
 
@@ -634,6 +664,9 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    outputs:
+      attachable: ${{ steps.gen.outputs.attachable }}
+      gib: ${{ steps.gen.outputs.gib }}
     steps:
       - uses: actions/checkout@v4
 
@@ -661,10 +694,12 @@ jobs:
           # --secure-boot-url defaults to Universal Blue's key, which is WRONG for
           # this image: an ISO that enrolls a key it does not own cannot chain to
           # the base image's shim. Recorded rather than silently inherited.
+          # `image` is a SUBCOMMAND and belongs after the options. Without it clap
+          # reads the image ref as an unknown subcommand and exits 2.
           bluebuild -vv generate-iso \
             --output-dir iso \
             --variant kinoite \
-            "ghcr.io/${REPO,,}:latest"
+            image "ghcr.io/${REPO,,}:latest"
 
           # Measured, not assumed: the whole DVD question turns on this number, and
           # an estimate that turns out 300 MB over is discovered only after writing
