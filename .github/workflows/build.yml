@@ -51,6 +51,23 @@ jobs:
           bluebuild --version
           bluebuild --version | grep -q 'BlueBuild 0.9.37'
 
+      # Facts, not a guess, and they cost seconds because this job finishes in
+      # under a minute — unlike the build job, where discovering them means
+      # paying for a twenty-minute build first. bluebuild takes a
+      # podman-in-podman path when the host podman is older than 5.0
+      # (process/drivers/podman_driver.rs:588), and when it does, the image lands
+      # in a storage the job's own `podman` does not read — which is what makes
+      # every in-image gate fail with the image plainly reported as built.
+      - name: Report the podman environment
+        run: |
+          echo "uid: $(id -u)"
+          echo "which podman: $(command -v podman || echo none)"
+          podman --version 2>&1 || true
+          echo "GraphRoot: $(podman info --format '{{.Store.GraphRoot}}' 2>&1 || true)"
+          echo "RunRoot:   $(podman info --format '{{.Store.RunRoot}}' 2>&1 || true)"
+          echo "--- podman images ---"; podman images 2>&1 || true
+          echo "--- sudo podman images ---"; sudo -n podman images 2>&1 || true
+
       - name: Validate the recipe
         run: bluebuild validate recipes/recipe.yaml
       - name: Generate the Containerfile
