@@ -280,8 +280,14 @@ jobs:
           # image ships a verification policy covering a reference nothing
           # publishes, and boot-time verification of the published image resolves
           # nothing. Printing the key would have passed on a mismatch; this fails.
-          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" sh -c \
-            'jq -e --arg r "ghcr.io/${REPO,,}" ".transports.docker | has(\$r)" /etc/containers/policy.json'
+          # `jq` is passed as argv, NOT via `sh -c`. Single quotes would have
+          # kept `${REPO,,}` from ever being expanded: it reaches the container's
+          # `sh`, which has no `${var,,}`, so `$r` arrived as `ghcr.io/` and this
+          # gate failed on an image whose policy was in fact correct. One cycle
+          # was spent failing against a good image.
+          podman run --rm --pull=never "ghcr.io/${REPO,,}:latest" \
+            jq -e --arg r "ghcr.io/${REPO,,}" \
+            '.transports.docker | has($r)' /etc/containers/policy.json
 
       - name: os-release carries ID=kinrin and ID_LIKE=fedora
         run: |

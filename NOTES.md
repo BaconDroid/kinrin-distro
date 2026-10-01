@@ -1134,6 +1134,26 @@ Verified by execution on this machine:
   `- type: signing` last, exactly as §5 requires, and the CI workflow builds the
   unmodified recipe.
 
+### One gate of mine was broken; the image was fine
+
+Criterion 28b asserts the policy key rather than printing it. It was written as
+
+```sh
+podman run --rm --pull=never "$IMAGE" sh -c \
+  'jq -e --arg r "ghcr.io/${REPO,,}" ".transports.docker | has(\$r)" /etc/containers/policy.json'
+```
+
+The single quotes are the defect. `${REPO,,}` is a bash-only case-folding expansion,
+so inside single quotes it survives to the container's `sh`, which does not know
+it: `$r` arrived as `ghcr.io/`, `has()` correctly returned `false`, and the gate
+failed against an image whose `/etc/containers/policy.json` was already correct —
+it listed `ghcr.io/bacondroid/kinrin-distro` as a key, with
+`registries.d/bacondroid-kinrin-distro.yaml` beside it.
+
+`jq` is now passed as argv rather than through `sh -c`, so bash expands before the
+container ever sees the argument. Worth recording because the failure presented as
+a build problem and was not one.
+
 ### `--build-driver docker` plus `--archive`, forced by upstream's own source
 
 The plan's §6 CI text assumes the image bluebuild built is sitting in the local
