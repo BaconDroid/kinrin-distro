@@ -960,10 +960,97 @@ being left, and a date tag is only a record — the digest is what resolves.
 | Fedora | 44 |
 | `dms` installed | `1.6.2-1.fc44` |
 | `niri` installed | `26.04-1.fc44` |
-| Build date tag | *filled in by the publish job's `id: meta` step — see the CI run* |
-| Published digest | *the digest `skopeo inspect` returns **after** the push; `skopeo copy` rewrites the layers, so the local manifest digest is not the one the registry serves* |
+| Build date tag | *not produced locally* — the `id: meta` step is in the publish job, which cannot run without a cosign keypair (§5) |
+| Local build tag | `ghcr.io/bacondroid/kinrin:latest_linux_amd64` |
+| Local image digest | `sha256:566c0b521c02cd2bc30b96794509c506a090aa42efc8cf0b8f8343fad86295c0` |
+| Image size | 10.9 GB uncompressed, 2116 packages |
+| Local build wall time | ~23 min |
 
-### What was verified here, and what was not
+**The local tag says `kinrin`, the repository's recipe says `kinrin-distro`.**
+That is a property of the *preflight copy*, not of the deliverable: the
+preflight tree was taken before §2.5 renamed the recipe, so it builds and tags
+under the old name. Nothing in this repository is inconsistent — `git ls-files`
+shows one recipe, and it says `kinrin-distro`. It is called out because a reader
+comparing the local tag with the recipe would otherwise think the two had
+drifted again, which is the exact §10 failure mode this build already fixed once.
+
+### The four in-image gates, run against the built image
+
+```
+PASS  niri validate --config /etc/niri/config.kdl (in-image)
+PASS  files.yaml presence chain, 13 paths
+PASS  os-release ID=kinrin
+PASS  os-release ID_LIKE=fedora
+=== 4 passed, 0 failed ===
+```
+
+Read out of the same image, because the plan asks for observation rather than
+assertion:
+
+```
+--- default binds survived the prepended include (criterion 2b) ---
+Mod+Space    1
+Mod+N        1
+Mod+Alt+L    1
+--- include is line 1 and optional ---
+include optional=true "../local.kdl"
+--- terminal bind corrected to konsole, no criterion covers this ---
+9:    Mod+T hotkey-overlay-title="Open Terminal" { spawn "konsole"; }
+ghostty occurrences: 0
+--- greetd: the alias must point at greetd, and never be disabled ---
+/usr/lib/systemd/system/greetd.service
+--- flatpak: the mask is the mechanism that survives ---
+/dev/null
+system remotes: []
+--- os-release, verbatim ---
+ID="kinrin"
+ID_LIKE="fedora"
+```
+
+Every one of those is a plan claim confirmed by execution rather than by
+reading:
+
+- **`display-manager.service` resolves to `greetd.service`.** This is the
+  boot-fatal line of §3: the base ships the alias pointing at `plasmalogin`, and
+  it is the `systemd` module's `enabled:` pass that repoints it. Had
+  `display-manager.service` been listed under `disabled:`, this would read
+  `/usr/lib/systemd/system/plasmalogin.service` or resolve to nothing at all, and
+  the image would boot with no login screen.
+- **`os-release` values are quoted** — `ID="kinrin"`, not `ID=kinrin`. That is
+  `os-release.nu:31` serialising with quotes, and it is exactly why the
+  post-build greps tolerate optional quotes; a bare `^ID=kinrin` would fail on a
+  correct build.
+- **The flatpak mask is `/dev/null` and `flatpak remotes --system` is empty** —
+  criterion 2c's two halves, and the marker in `/var` is irrelevant because
+  `post_build.sh:22` clears it.
+- **`Mod+T` spawns `konsole` and no `ghostty` survives.** No criterion in §8
+  covers this bind, which is why it was checked here and in the container
+  rehearsal.
+- **The three default binds survived** the prepended include, which is what
+  criterion 2b exists to protect.
+
+### Criterion 28b could **not** be satisfied here, and the reason matters
+
+The built image *does* contain `/etc/containers/policy.json` and
+`/etc/containers/registries.d/` — but those are **the base image's**, not the
+`signing` module's:
+
+```console
+$ podman run --rm <image> rpm -qf /etc/containers/policy.json
+containers-common-0.67.2-1.fc44.noarch
+$ podman run --rm <image> jq -c '.transports.docker' /etc/containers/policy.json
+null
+```
+
+`.transports.docker` is `null`, so **no `ghcr.io/<owner>/<repo>` key exists** —
+which is precisely what criterion 28b asserts. This is not a near-miss to be
+softened: the file's presence is the base's, and a gate that only checked
+`test -f /etc/containers/policy.json` would have passed on an image whose
+verification policy says nothing about this repository. The CI step therefore
+does both — `test -f` **and** `jq -e --arg r "ghcr.io/${REPO,,}" '.transports.docker
+| has($r)'` — and on this image the second would fail, correctly.
+
+The `signing` module ran in no build yet, because no `cosign.pub` exists (§5).
 
 ### Deviations from the plan's own CI text, and why
 
@@ -988,6 +1075,9 @@ being left, and a date tag is only a record — the digest is what resolves.
 
 Verified by execution on this machine:
 
+- **the full bootc build**, end to end, of the eight `from-file:` modules in the
+  order §5 requires — ~23 min, 2116 packages, 10.9 GB, four of the six gates
+  green inside the built image (§ above);
 - `bluebuild validate recipes/recipe.yaml` → valid, **before** the build.
 - `bluebuild generate` → the Containerfile, with `stage-files`, the thirteen
   `files.yaml` pairs, and all nine module RUNs in the specified order.
