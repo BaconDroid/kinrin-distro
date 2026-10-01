@@ -621,3 +621,72 @@ jobs:
           # is actually fetchable, which is the thing a reader will rely on.
           gh release view "$VERSION" --json tagName,isDraft,url --jq '"\(.tagName) draft=\(.isDraft) \(.url)"'
           test "$(gh release view "$VERSION" --json isDraft --jq .isDraft)" = "false"
+
+  # A bootable ISO, generated from the PUBLISHED image rather than from a second
+  # build. Building it from the recipe instead would compile everything twice and
+  # could legitimately produce a different artefact than the one that was gated and
+  # signed — an ISO nobody verified.
+  #
+  # `-V kinoite` asks for a user and password at install time, which is the stable
+  # variant and the right one for a desktop. The Silverblue variant defers that to
+  # first boot instead.
+  iso:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bluebuild
+        run: |
+          set -euo pipefail
+          REF=ghcr.io/blue-build/cli:v0.9.37
+          DIGEST=$(skopeo inspect --format '{{.Digest}}' "docker://$REF")
+          podman create --name bb-install "$REF@$DIGEST"
+          podman cp bb-install:/out/bluebuild /tmp/bb
+          podman rm bb-install
+          sudo install -m 0755 /tmp/bb /usr/local/bin/bluebuild
+          bluebuild --version | grep -q 'BlueBuild 0.9.37'
+
+      - name: Generate the ISO from the published image
+        id: gen
+        run: |
+          set -euo pipefail
+          mkdir -p iso
+          # --secure-boot-url defaults to Universal Blue's key, which is WRONG for
+          # this image: an ISO that enrolls a key it does not own cannot chain to
+          # the base image's shim. Recorded rather than silently inherited.
+          bluebuild -vv generate-iso \
+            --output-dir iso \
+            --variant kinoite \
+            "ghcr.io/${REPO,,}:latest"
+
+          # Measured, not assumed: the whole DVD question turns on this number, and
+          # an estimate that turns out 300 MB over is discovered only after writing
+          # a DVD. `du --apparent-size` on the real file, in both units.
+          ISO=$(find iso -type f -name '*.iso' | head -1)
+          if [ -z "$ISO" ]; then
+            echo "::error::generate-iso produced no .iso"
+            exit 1
+          fi
+          stat -c '%n %s' "$ISO"
+          du -h "$ISO"; du -h --apparent-size "$ISO"
+          BYTES=$(stat -c '%s' "$ISO")
+          GIB=$(awk -v b="$BYTES" 'BEGIN{printf "%.2f", b/1024/1024/1024}')
+          echo "iso=$ISO" >> "$GITHUB_OUTPUT"
+          echo "bytes=$BYTES" >> "$GITHUB_OUTPUT"
+          echo "gib=$GIB" >> "$GITHUB_OUTPUT"
+          # GitHub caps a release asset at 2 GiB. Say so here, where the number is
+          # known, rather than letting a later `gh release upload` fail obscurely.
+          if [ "$BYTES" -le 2147483648 ]; then
+            echo "attachable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "attachable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ISO is $GIB GiB, above GitHub's 2 GiB release-asset cap; it ships as a workflow artifact only"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kinrin-iso
+          path: ${{ steps.gen.outputs.iso }}
+
