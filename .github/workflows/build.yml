@@ -128,8 +128,14 @@ jobs:
         # fail-silent shape PLAN §3.2 warns about for `flatpak remotes | grep`.
         run: |
           set -uo pipefail
-          REF="ghcr.io/${REPO,,}/kinrin:latest"
-          PREFIX="ghcr.io/${REPO,,}/kinrin"
+          # The image repository IS ghcr.io/<owner>/<repo>. Do not append a
+          # second name: this step once searched for ghcr.io/<owner>/<repo>/kinrin,
+          # a leftover of the old recipe name, and reported "no image after the
+          # build" while the build had plainly succeeded. `${REPO,,}` is the whole
+          # reference, and the recipe `name:` is already inside it.
+          REPO_REF="ghcr.io/${REPO,,}"
+          REF="${REPO_REF}:latest"
+          PREFIX="${REPO_REF}:"
 
           echo "::group::what podman holds"
           podman images --format '{{.Repository}}:{{.Tag}} {{.Size}}' || true
