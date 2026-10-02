@@ -51,6 +51,12 @@ install:
     # across a greeter logout or an SSH drop on a machine whose display manager
     # is greetd. Present in Fedora (3.7c), nothing third-party.
     - tmux
+    # Kvantum + qt6ct theme every Qt application (Konsole, Kate, Dolphin).
+    # Both are in Fedora 44 proper; no third-party repository is involved.
+    # qt5ct is deliberately absent -- with both installed Qt picks
+    # unpredictably between them.
+    - kvantum
+    - qt6ct
     - npm
     - python3-pip
     - golang

@@ -450,6 +450,7 @@ default branch is **not** the same everywhere (`master` for tmux/konsole,
 | **tmux** | `dracula/tmux@master` | a **TPM plugin**, so three files, not a `.conf` |
 | **OpenCode** | `dracula/opencode@main` | `dracula` is **not** a built-in theme |
 | **Plasma / Dolphin** | hand-written from `draculatheme.com/spec` | **no upstream theme exists** |
+| **All Qt apps** | `dracula/gtk@kde/kvantum` + `dracula/qt5` | Kvantum widget style + qt6ct palette |
 
 Two details that are easy to get wrong:
 
@@ -465,6 +466,35 @@ Dracula for KDE: no `dracula/dolphin` repository, no `kdeglobals` entry, and the
 KDE Store listing is third-party. Every RGB value in
 `files/etc/skel/.local/share/color-schemes/Dracula.colors` is taken verbatim from
 the specification's Color Palette and UI Color Palette tables.
+
+### Kvantum and qt6ct — how Qt apps actually get themed
+
+Writing a Plasma `.colors` file themes the **shell**, but Konsole, Kate and
+Dolphin are Qt applications and read their palette from Qt itself. That needs
+two engines, both in Fedora 44 proper — no third-party repository:
+
+- **`kvantum`** provides the widget style (window chrome, buttons, tabs).
+- **`qt6ct`** provides the colour palette and loads Kvantum as the style.
+
+```
+~/.config/Kvantum/Dracula/       Dracula.kvconfig + Dracula.svg
+~/.config/Kvantum/kvantum.kvconfig   [General] theme=Dracula
+~/.config/qt6ct/qt6ct.conf       style=kvantum, colour_scheme_path=…/Dracula.conf
+~/.config/qt6ct/colors/          Dracula.conf
+~/.config/environment.d/91-qt-theme.conf   QT_QPA_PLATFORMTHEME=qt6ct
+```
+
+Two things that cost time to get right:
+
+- **The Kvantum theme is not in a repository called `dracula/kvantum`.** It
+  lives inside `dracula/gtk`, under `kde/kvantum/`, pinned to a commit. Every
+  obvious path 404s — including `dracula/gtk/Kvantum/…`. Four variants exist:
+  `Dracula`, `Dracula-Solid`, `Dracula-purple`, `Dracula-purple-solid`.
+- **`qt5ct` is deliberately not installed.** With both Qt5 and Qt6 variants
+  present, Qt picks between them unpredictably. Only `qt6ct`.
+
+`QT_QPA_PLATFORMTHEME=qt6ct` is set in `environment.d`, not as an exported shell
+variable, so it reaches the session without being set by hand.
 
 ### What is deliberately not themed
 

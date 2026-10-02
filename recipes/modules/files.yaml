@@ -78,3 +78,15 @@ files:
     destination: /etc/skel/.config/opencode/tui.json
   - source: etc/skel/.config/opencode/themes/dracula.json
     destination: /etc/skel/.config/opencode/themes/dracula.json
+  - source: etc/skel/.config/Kvantum/Dracula/Dracula.kvconfig
+    destination: /etc/skel/.config/Kvantum/Dracula/Dracula.kvconfig
+  - source: etc/skel/.config/Kvantum/Dracula/Dracula.svg
+    destination: /etc/skel/.config/Kvantum/Dracula/Dracula.svg
+  - source: etc/skel/.config/Kvantum/kvantum.kvconfig
+    destination: /etc/skel/.config/Kvantum/kvantum.kvconfig
+  - source: etc/skel/.config/qt6ct/qt6ct.conf
+    destination: /etc/skel/.config/qt6ct/qt6ct.conf
+  - source: etc/skel/.config/qt6ct/colors/Dracula.conf
+    destination: /etc/skel/.config/qt6ct/colors/Dracula.conf
+  - source: etc/skel/.config/environment.d/91-qt-theme.conf
+    destination: /etc/skel/.config/environment.d/91-qt-theme.conf
