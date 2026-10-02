@@ -1613,3 +1613,44 @@ gamescope/MangoHud/umu from Terra's third-party repo, `nice -8` for Proton
 images either), Sunshine (its virtual monitor uses `kscreen-doctor`, KWin-only),
 Waydroid, the whole gamescope session / `steamos-manager` stack, and every
 Deck-specific preset.
+
+## 10. Noctalia was evaluated and deliberately rejected
+
+Do not re-open this without hardware. The shell is **DankMaterialShell** and it
+stays. Recorded because Noctalia looks like an obvious upgrade and is not one
+here.
+
+**What it is.** A complete Wayland shell in C++/OpenGL ES, no Qt and no GTK:
+bars, dock, launcher, control centre, notifications, wallpaper, lock screen,
+widgets. Note there are two eras — the Quickshell-based **v4 is abandoned**, and
+v5 is the current one. Confusing the two produces dead links
+(`docs.noctalia.dev/v4/` says "no longer maintained").
+
+**What made it look attractive, and all of it is true:**
+
+- **niri is supported natively**, with a dedicated documentation page and an
+  autostart snippet — not a blocker.
+- It is an **official Fedora RPM** (`noctalia 5.2.0-1.fc44`), not Flatpak-only, so
+  it layers into an ostree image cleanly.
+- Dracula is a **built-in palette**, so nothing to vendor.
+- It draws its own wallpaper (`noctalia msg wallpaper-set`), so no `swww`.
+
+**Why it is rejected anyway.** DMS and Noctalia are both complete shells covering
+the same surfaces. Running both gives two bars and two daemons contending for the
+D-Bus name `org.freedesktop.Notifications`. Adopting Noctalia means removing DMS,
+removing every `dms ipc call …` this image uses, and most likely `dms-greeter`.
+
+The deciding reason is narrower and worth stating plainly: **there is still no
+hardware to validate anything on.** Replacing a shell that works and is covered
+by gates with one nothing has been run on, in exchange for theme colours that
+Kvantum already delivers, is a bad trade with no way to detect it going wrong.
+
+**The trap.** Noctalia is a plausible-looking upgrade to a DMS-based setup, and
+it *is* technically usable — Fedora package, native niri support, built-in theme.
+Nothing about it announces itself as a full replacement. If a future session
+sees a nicer screenshot, the failure mode is installing it alongside DMS and
+ending up with two bars.
+
+**If that session ever has hardware:** install it without starting it.
+`dnf install noctalia` adds the binary and its theme and touches nothing. That is
+the only safe way to look at it.

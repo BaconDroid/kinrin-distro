@@ -511,6 +511,18 @@ variable, so it reaches the session without being set by hand.
 every file can still render wrong, and there is no hardware here to check it on.
 `NOTES.md` §9 records the measurements behind these choices.
 
+## The shell is DMS, and that is settled
+
+The desktop shell is **DankMaterialShell**, started by niri, with `dms-greeter`
+under greetd. **Noctalia was evaluated and rejected** — it is a genuine option
+(official Fedora RPM, native niri support, Dracula built in) but it is a
+*complete replacement shell*, not an addition, and running both gives two bars
+and two notification daemons. The deciding reason is that there is no hardware
+here to validate a shell swap on.
+
+`NOTES.md` §10 records this so it is not re-litigated. If you ever have hardware,
+`dnf install noctalia` is safe — it installs the binary without starting it.
+
 ## When CI runs
 
 `build.yml` triggers on a push that touches a **build input** only:
