@@ -645,13 +645,70 @@ jobs:
 
           # The tag is pinned to the commit that produced it, not to the branch
           # head, so a release always names the tree it was built from.
-          gh release create "$VERSION" \
-            --title "KinRin $VERSION (Fedora $FEDORA, dms $DMS)" \
-            --target "$GITHUB_SHA" \
-            --notes-file notes.md \
-            "${assets[@]}"
+          #
+          # Retried, because the create itself is intermittently refused.
+          #
+          # Measured across six runs of this workflow with no change to this job
+          # between them: releases were created by runs A and C and refused by
+          # runs B and D, alternating exactly, each refusal being
+          #
+          #   HTTP 403: Resource not accessible by integration
+          #     (https://api.github.com/repos/BaconDroid/kinrin-distro/releases)
+          #
+          # The cause is upstream and was never pinned down. What is ruled out:
+          # `contents: write` is declared here and is present; the version step
+          # issues GET /releases successfully moments earlier, so the token is
+          # alive and can read; the tag is new; releases are not immutable; the
+          # tag is not an orphan. What remains is the POST specifically, which
+          # points at the installation token's write side being flaky rather than
+          # at anything configured here.
+          #
+          # So: retry the transient refusal, and treat "already exists with our
+          # digest" as success. That second case matters because a POST can
+          # succeed server-side while the client never sees the response — a
+          # blind retry there would either duplicate or fail on a tag that is
+          # already correct. Verification is by digest in the body, never by the
+          # exit status of the call that made it.
+          max_attempts=5
+          for attempt in $(seq 1 "$max_attempts"); do
+            set +e
+            ERR=$(gh release create "$VERSION" \
+              --title "KinRin $VERSION (Fedora $FEDORA, dms $DMS)" \
+              --target "$GITHUB_SHA" \
+              --notes-file notes.md \
+              "${assets[@]}" 2>&1)
+            rc=$?
+            set -e
 
-          echo "created $VERSION -> $DIGEST"
+            if [ "$rc" -eq 0 ]; then
+              echo "created $VERSION -> $DIGEST"
+              break
+            fi
+
+            echo "::warning::release create attempt $attempt/$max_attempts failed: $ERR"
+
+            # Did an earlier attempt actually land, response lost or not?
+            if gh release view "$VERSION" --json body --jq .body 2>/dev/null \
+                 | grep -qF "$DIGEST"; then
+              echo "release $VERSION already exists and carries our digest — treating as created"
+              break
+            fi
+
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              # Linear backoff, 15s then 30s, 45s, 60s. Long enough that a retry
+              # is not racing the token's own recovery window, short enough that a
+              # stuck run does not sit for an hour.
+              sleep $((attempt * 15))
+            fi
+          done
+
+          # The loop breaking and the loop succeeding look the same from here, so
+          # confirm rather than infer. This is the step that actually decides.
+          if ! gh release view "$VERSION" --json body --jq .body | grep -qF "$DIGEST"; then
+            echo "::error::no release $VERSION carries digest $DIGEST after $max_attempts attempts"
+            exit 1
+          fi
+          echo "release $VERSION confirmed"
 
       - name: Confirm the release resolves
         if: steps.ver.outputs.fresh == 'true'
