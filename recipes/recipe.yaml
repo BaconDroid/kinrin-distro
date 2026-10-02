@@ -33,6 +33,9 @@ modules:
   - from-file: modules/opencode.yaml
   - from-file: modules/orca.yaml
   # §5 — last of the eight, so dnf and `dms setup` still read ID=fedora.
+  # Removes the non-Latin IBus engines and alacritty. Must come after the dnf
+  # module, which is what installs them via the Kinoite base.
+  - from-file: modules/cleanup.yaml
   - from-file: modules/os-release.yaml
   # §6.1 — contributes the verification policy the image ships, layered over an
   # image that already contains everything. The private key never enters it.

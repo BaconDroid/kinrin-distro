@@ -1,0 +1,38 @@
+type: script@v2
+snippets:
+  # Remove what the Kinoite base drags in and this desktop has no use for.
+  #
+  # Two independent reasons, both measured on the built image before this was
+  # written rather than inferred from the package list.
+  #
+  # 1. Six IBus input-method engines for scripts this desktop does not use:
+  #    Japanese (anthy twice — the C engine and the Python one), Korean (chewing,
+  #    hangul), Chinese (libpinyin) and Malayalam (m17n). `ibus-libs` and the
+  #    framework itself are untouched; only the languages go. Verified on the
+  #    image: all six leave cleanly and ibus-libs survives.
+  #
+  # 2. `alacritty`, alongside `konsole`. konsole is already the default
+  #    terminal, ships a Dracula colourscheme with a profile set as
+  #    DefaultSession, and is themed through Kvantum. alacritty has no
+  #    configuration anywhere in this image, so it renders light in the middle of
+  #    a dark desktop — the only user-facing program that visibly breaks the
+  #    theme. Nothing requires either package.
+  #
+  # `dnf remove -y` rather than an exclude: these arrive with the base image, so
+  # they are present before this recipe runs and can only be removed after.
+  #
+  # ONE snippet entry: the v2 runner gives each its own `/bin/sh -c` subshell,
+  # so a variable set in one entry would not survive into the next.
+  - |
+    dnf remove -y \
+      ibus-anthy ibus-anthy-python ibus-chewing ibus-hangul ibus-libpinyin \
+      ibus-m17n alacritty
+    dnf clean all
+    for p in ibus-anthy ibus-anthy-python ibus-chewing ibus-hangul \
+             ibus-libpinyin ibus-m17n alacritty; do
+      if rpm -q "$p" >/dev/null 2>&1; then
+        echo "cleanup: $p is STILL installed" >&2
+        exit 1
+      fi
+    done
+    echo "cleanup: non-Latin IBus engines and alacritty removed"

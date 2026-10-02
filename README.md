@@ -49,6 +49,7 @@ which is a TUI with its own theming.
 configuration is the one lever that could spread Dracula across the whole stack,
 and it is deliberately not attempted without hardware to verify it on.
 | Apps | Dolphin, Konsole, Kate, Discover (backed by `plasma-discover-packagekit`) |
+| Not shipped | the non-Latin IBus input engines (Japanese, Korean, Chinese, Malayalam) and `alacritty` — konsole is the terminal |
 | Games | `steam` + `steam-devices` from RPM Fusion; on-demand VRR for `steam_app_*` windows |
 | Chat | `discord` from RPM Fusion, screen sharing through the KDE portal |
 | Dev | Node, Go, Rust, Python, C/C++, podman, ripgrep, fish, zsh, tmux; **opencode** 1.18.34, pinned |
