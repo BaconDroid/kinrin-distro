@@ -1,0 +1,59 @@
+[General]
+ColorScheme=Dracula
+Name=Dracula
+Description=Dracula Classic, from the official specification at draculatheme.com/spec
+
+# Written by hand from the specification because there is NO upstream Dracula
+# colour scheme for KDE Plasma: the dracula/dracula-theme repository has no
+# Dolphin and no kdeglobals entry, and the KDE Store listing is third-party.
+# Dolphin follows the Plasma colour scheme, so this is the only way to reach it
+# without vendoring someone else's work.
+#
+# Every value is taken verbatim from the Color Palette and UI Color Palette
+# tables of the specification. Nothing here is invented.
+
+[Colors:Window]
+Background=40,42,54
+Foreground=248,248,242
+
+[Colors:View]
+Background=40,42,54
+Foreground=248,248,242
+
+[Colors:Selection]
+Background=68,71,90
+Foreground=248,248,242
+
+[Colors:Complementary]
+Background=52,55,70
+Foreground=248,248,242
+
+[Colors:Toolbar]
+Background=52,55,70
+Foreground=248,248,242
+
+[Colors:Inactive]
+Background=40,42,54
+Foreground=98,114,164
+
+[Colors:Disabled]
+Background=40,42,54
+Foreground=98,114,164
+
+# Syntax and status colours, from the same specification. KDE reads these for
+# text editors and for state indicators.
+[Colors:Success]
+Background=80,250,123
+Foreground=40,42,54
+
+[Colors:Warning]
+Background=255,184,108
+Foreground=40,42,54
+
+[Colors:Error]
+Background=255,85,85
+Foreground=40,42,54
+
+[Colors:Link]
+Background=189,147,249
+Foreground=189,147,249

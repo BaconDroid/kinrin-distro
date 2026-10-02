@@ -24,7 +24,7 @@ greetd ──▶ dms-greeter
 | | |
 |---|---|
 | Session | `niri` + `dms-greeter` login screen |
-| Theming | Dracula (dark) and Alucard (light) in one `theme.json`, applied to **DMS only** |
+| Theming | Dracula: **DMS** (its own `theme.json`), **Konsole**, **tmux**, **OpenCode**, and **Plasma/Dolphin**. Not themed: Kate (no syntax engine in this image), GTK apps, GIMP 3 |
 
 The theming row above was wrong until this was checked in the image. `matugen`
 is installed — it ships with Kinoite at `/usr/sbin/matugen` — but **no recipe in
@@ -433,6 +433,53 @@ To rebuild or re-publish without touching the key at all, dispatch CI directly:
 ```bash
 gh workflow run build.yml --repo BaconDroid/kinrin-distro
 ```
+
+## Dracula, and where each app gets it
+
+Every file below is **vendored from the official GitHub repositories**, staged
+into `/etc/skel` so a new user starts themed. The URLs were confirmed to return
+200 before being vendored — the `dracula/dracula-theme` repository is an index of
+submodules, so the raw URLs live under `dracula/<app>/<branch>/<file>`, and the
+default branch is **not** the same everywhere (`master` for tmux/konsole,
+`main` for opencode).
+
+| App | Source | Notes |
+| --- | ------ | ----- |
+| **DMS** | `dms-plugin-registry` | fetched at build time by `theme.yaml` |
+| **Konsole** | `dracula/konsole@master` | ships a complete `[Background]`/`[Color0..7]` scheme |
+| **tmux** | `dracula/tmux@master` | a **TPM plugin**, so three files, not a `.conf` |
+| **OpenCode** | `dracula/opencode@main` | `dracula` is **not** a built-in theme |
+| **Plasma / Dolphin** | hand-written from `draculatheme.com/spec` | **no upstream theme exists** |
+
+Two details that are easy to get wrong:
+
+- **OpenCode's theme is selected in `tui.json`, not `opencode.json`.** Because
+  `dracula` is not built in, the file has to be dropped in
+  `~/.config/opencode/themes/` as well.
+- **A staged theme is not an applied theme.** Each one ships with its activation
+  file — a Konsole `.profile` plus a `konsolerc` naming it as `DefaultSession`, a
+  `.tmux.conf` that sources the plugin, and the `tui.json` that selects it.
+
+The Plasma colour scheme is the only one written by hand. There is no upstream
+Dracula for KDE: no `dracula/dolphin` repository, no `kdeglobals` entry, and the
+KDE Store listing is third-party. Every RGB value in
+`files/etc/skel/.local/share/color-schemes/Dracula.colors` is taken verbatim from
+the specification's Color Palette and UI Color Palette tables.
+
+### What is deliberately not themed
+
+- **Kate** — there is no syntax-highlighting engine in this image: `kate-libs`
+  ships zero schema files and `kate` has no katepart dependency. The upstream
+  `dracula.kateschema` would be inert. Syntax colouring would mean adding the
+  engine, which is a much larger change.
+- **GTK applications** — theming them means authoring a GTK theme, not writing a
+  setting. Out of scope here, and unverifiable without hardware.
+- **GIMP** — the upstream theme targets GIMP 2.10/GTK2; Fedora 44 ships GIMP 3,
+  which does not read `gtkrc`.
+
+**None of this has been seen on a screen.** A colour scheme that is correct in
+every file can still render wrong, and there is no hardware here to check it on.
+`NOTES.md` §9 records the measurements behind these choices.
 
 ## When CI runs
 

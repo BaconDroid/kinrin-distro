@@ -49,3 +49,32 @@ files:
   # before being written. See files/usr/lib/sysctl.d/70-kinrin-gaming.conf.
   - source: usr/lib/sysctl.d/70-kinrin-gaming.conf
     destination: /usr/lib/sysctl.d/70-kinrin-gaming.conf
+  # Dracula, vendored from the official GitHub repositories and staged into
+  # the skel. URLs verified to return 200 before vendoring; each repository
+  # has its own default branch, which is why the paths differ.
+  #   tmux     dracula/tmux@master        (3 files: a TPM plugin, not a .conf)
+  #   konsole  dracula/konsole@master    (complete [Background]/[Color0..7])
+  #   opencode dracula/opencode@main     (dracula is NOT a built-in theme)
+  #   kde      hand-written from draculatheme.com/spec: no upstream exists
+  # Activation files below each of those, because a staged theme is not an
+  # applied one.
+  - source: etc/skel/.tmux.conf
+    destination: /etc/skel/.tmux.conf
+  - source: etc/skel/.config/tmux/dracula.tmux
+    destination: /etc/skel/.config/tmux/dracula.tmux
+  - source: etc/skel/.config/tmux/scripts/dracula.sh
+    destination: /etc/skel/.config/tmux/scripts/dracula.sh
+  - source: etc/skel/.config/tmux/scripts/utils.sh
+    destination: /etc/skel/.config/tmux/scripts/utils.sh
+  - source: etc/skel/.config/konsolerc
+    destination: /etc/skel/.config/konsolerc
+  - source: etc/skel/.local/share/konsole/Dracula.colorscheme
+    destination: /etc/skel/.local/share/konsole/Dracula.colorscheme
+  - source: etc/skel/.local/share/konsole/Dracula.profile
+    destination: /etc/skel/.local/share/konsole/Dracula.profile
+  - source: etc/skel/.local/share/color-schemes/Dracula.colors
+    destination: /etc/skel/.local/share/color-schemes/Dracula.colors
+  - source: etc/skel/.config/opencode/tui.json
+    destination: /etc/skel/.config/opencode/tui.json
+  - source: etc/skel/.config/opencode/themes/dracula.json
+    destination: /etc/skel/.config/opencode/themes/dracula.json
