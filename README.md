@@ -28,7 +28,7 @@ greetd ──▶ dms-greeter
 | Apps | Dolphin, Konsole, Kate, Discover (backed by `plasma-discover-packagekit`) |
 | Games | `steam` + `steam-devices` from RPM Fusion; on-demand VRR for `steam_app_*` windows |
 | Chat | `discord` from RPM Fusion, screen sharing through the KDE portal |
-| Dev | Node, Go, Rust, Python, C/C++, podman, ripgrep, fish, zsh |
+| Dev | Node, Go, Rust, Python, C/C++, podman, ripgrep, fish, zsh, tmux; **opencode** 1.18.34, pinned |
 | Editor | orca, installed from its GitHub release RPM |
 | Flatpak | the `flatpak` package is present but no remote is enabled |
 
@@ -233,7 +233,7 @@ repository — see the note above for its current state.
 
 ```
 recipes/recipe.yaml           the recipe; its modules are the only place the image content is declared
-recipes/modules/*.yaml        one file per from-file: entry — eight of them
+recipes/modules/*.yaml        one file per from-file: entry — nine of them
 files/                        the files module's data tree, one entry per file it ships
 .github/workflows/            build.yml, and the monthly monitor-fedora.yml
 TESTING.md                    the manual criteria, to run on a real machine
@@ -417,7 +417,7 @@ gh workflow run build.yml --repo BaconDroid/kinrin-distro
 
 | Path | Why |
 |---|---|
-| `recipes/**` | the recipe and its eight modules |
+| `recipes/**` | the recipe and its nine modules |
 | `files/**` | the 13 staged files |
 | `cosign.pub` | what the `signing` module signs with |
 | `.github/workflows/build.yml` | the pipeline itself |
@@ -522,7 +522,7 @@ order matters as much as the content.
 
 1. **`cosign.pub` must be in the tree before the first CI run.** It is a build
    input, not documentation. Without it the `signing` module — the *last* of the
-   last of eight — exits 1, and the full build is spent before you find out.
+   last of nine — exits 1, and the full build is spent before you find out.
 2. **Run `~/Projects/kinrin-publish.sh` as a script, never pasted into a shell.**
    It uses `set -uo pipefail` and an explicit `die()` rather than `set -e`, so a
    failure stops the sequence at a known point. Pasting it does not close the tab

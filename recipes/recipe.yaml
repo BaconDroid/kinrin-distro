@@ -26,6 +26,11 @@ modules:
   - from-file: modules/systemd-system.yaml
   - from-file: modules/niri-config.yaml
   - from-file: modules/theme.yaml
+  # OpenCode, pinned. A ninth module: the plan fixes eight, and this is an
+  # addition rather than a change, so it is recorded in NOTES rather than
+  # folded silently into an existing module whose subject it does not share.
+  # Inserted here so os-release remains immediately before signing.
+  - from-file: modules/opencode.yaml
   - from-file: modules/orca.yaml
   # §5 — last of the eight, so dnf and `dms setup` still read ID=fedora.
   - from-file: modules/os-release.yaml

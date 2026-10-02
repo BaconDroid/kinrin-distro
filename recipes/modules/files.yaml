@@ -49,6 +49,3 @@ files:
   # before being written. See files/usr/lib/sysctl.d/70-kinrin-gaming.conf.
   - source: usr/lib/sysctl.d/70-kinrin-gaming.conf
     destination: /usr/lib/sysctl.d/70-kinrin-gaming.conf
-  # memlock for DXVK/Wine. Same source, same reasoning.
-  - source: etc/security/limits.d/60-kinrin-memlock.conf
-    destination: /etc/security/limits.d/60-kinrin-memlock.conf

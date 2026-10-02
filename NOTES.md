@@ -1502,12 +1502,11 @@ notes. Before that, there was no ISO at all.
 Read from `ublue-os/bazzite` (the org is no longer `UniversalBlue/*`, which 404s)
 and filtered against this image: Kinoite + niri + DMS, not GNOME/KDE, not a Deck.
 
-### Applied — two overlays, in the image
+### Applied — one overlay, in the image
 
 | File | Contents |
 | ---- | -------- |
 | `/usr/lib/sysctl.d/70-kinrin-gaming.conf` | `vm.max_map_count=2147483642`, `kernel.split_lock_mitigate=0` |
-| `/etc/security/limits.d/60-kinrin-memlock.conf` | `memlock 2147484`, hard and soft |
 
 `vm.max_map_count` matters because the default 65530 makes large titles fail to
 start rather than merely degrade. `split_lock_mitigate=0` trades a security
@@ -1520,6 +1519,53 @@ so a typo is indistinguishable from a setting that does nothing.
 
 The presence gate was extended to cover both new destinations: 15 of 15 now.
 A staged file that no gate checks is the false green PLAN §3.2 rules out.
+
+### Refused — `memlock` limits: it broke PAM
+
+Bazzite also ships `etc/security/limits.d/memlock.conf`. It was written, and the
+build failed on the `niri-config.yaml` snippet at `su - builder -c 'dms setup
+headless'` — twice, identically, so not a flake. The cause was reproduced and
+isolated with a control:
+
+```
+without the file:  su - nobody  ->  "This account is currently not available"
+with the file:     su - nobody  ->  "cannot open session: Error in service module"
+```
+
+A different failure mode, and it is a PAM failure, not a shell one. Then the
+decisive test — the value is irrelevant:
+
+| `memlock` | result |
+| --------- | ------ |
+| 2147484 (Bazzite's) | `Error in service module` |
+| 65536 | `Error in service module` |
+| 8192 | `Error in service module` |
+| **0** | **`Error in service module`** |
+
+Any file in `limits.d` breaks it, because `pam_limits` cannot raise a rlimit in
+the unprivileged container the build runs in. On real hardware it would probably
+be fine — which is exactly the problem: shipping something whose only evidence is
+"it would probably work" is how a login breaks on a machine nobody tested. The
+file is removed.
+
+Worth keeping as method: the failure pointed at `niri-config.yaml`, and it was
+tempting to blame it. `git diff` proved that file byte-identical to the version
+that had just succeeded, which moved the suspicion to the change actually in the
+commit.
+
+### Applied — `tmux` and `opencode`, at the user's request
+
+`tmux` is a plain Fedora package (3.7c). `opencode` is not: it is a 185 MB
+standalone binary with no RPM, and its npm package is `opencode-ai` — the short
+name `opencode` is a 404, found with `npm view` rather than assumed. Installed
+pinned at **1.18.34**, the version the local install reports, because the plan's
+rule 2 forbids unpinned installs.
+
+This is a **ninth module**, which the plan does not have. It is an addition, not
+a change to an existing module's subject, so it is recorded rather than folded
+into `theme.yaml` or `orca.yaml` where it would not belong. It sits before
+`os-release.yaml` so that `os-release` remains immediately before `signing`, as
+the plan requires.
 
 ### Applied — host-side, not in the image
 

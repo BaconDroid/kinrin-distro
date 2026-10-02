@@ -1,0 +1,21 @@
+type: script@v2
+snippets:
+  # OpenCode, pinned. The short name `opencode` does not exist on the registry
+  # (404) — verified with `npm view`, not assumed. `opencode-ai` resolves to
+  # 1.18.34, which is the version the local install reports.
+  #
+  # Pinned rather than `@latest` because the plan's rule 2 forbids unpinned
+  # installs, and an unpinned tool in a system image means the image is not
+  # reproducible.
+  #
+  # ONE snippet entry: the v2 runner starts each entry in its own `/bin/sh -c`
+  # subshell, so an exported variable would not survive into a second entry.
+  #
+  # The cache is redirected because npm cannot write to $HOME during the build,
+  # which surfaces as an unrelated-looking "Log files were not written" error.
+  - |
+    export npm_config_cache=/tmp/npmcache
+    npm install -g --no-audit --no-fund opencode-ai@1.18.34 \
+      && rm -rf /tmp/npmcache \
+      && command -v opencode >/dev/null \
+      && opencode --version
