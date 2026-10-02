@@ -24,7 +24,30 @@ greetd ──▶ dms-greeter
 | | |
 |---|---|
 | Session | `niri` + `dms-greeter` login screen |
-| Theming | Dracula (dark) and Alucard (light) in one `theme.json`, applied through DMS and propagated by matugen; Breeze stays underneath as the fallback for anything a colour scheme does not reach |
+| Theming | Dracula (dark) and Alucard (light) in one `theme.json`, applied to **DMS only** |
+
+The theming row above was wrong until this was checked in the image. `matugen`
+is installed — it ships with Kinoite at `/usr/sbin/matugen` — but **no recipe in
+this repository configures it**, so it propagates nothing. Verified inside the
+built image:
+
+```
+matugen      /usr/sbin/matugen   (present, unconfigured)
+GTK          no settings.ini
+Qt           no qtct.conf
+Konsole      no profile in skel
+tmux         no config
+```
+
+So the colour scheme reaches DMS and nothing else. Konsole, Kate and Dolphin
+render in **Breeze**, because that is the Plasma default they inherit from
+Kinoite — not because a fallback was chosen. Terminals are likewise unthemed:
+tmux has its own colour scheme and inherits nothing, and neither does OpenCode,
+which is a TUI with its own theming.
+
+`NOTES.md` §9 records where the Steam/Proton tuning came from; a matugen
+configuration is the one lever that could spread Dracula across the whole stack,
+and it is deliberately not attempted without hardware to verify it on.
 | Apps | Dolphin, Konsole, Kate, Discover (backed by `plasma-discover-packagekit`) |
 | Games | `steam` + `steam-devices` from RPM Fusion; on-demand VRR for `steam_app_*` windows |
 | Chat | `discord` from RPM Fusion, screen sharing through the KDE portal |
