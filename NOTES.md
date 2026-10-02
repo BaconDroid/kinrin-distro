@@ -1496,3 +1496,74 @@ before any trimming was attempted — `generate-iso` running from the published
 image, the measured size surfaced as a job output, the release attaching the ISO
 when it fits and warning when it does not, and the download link in the release
 notes. Before that, there was no ISO at all.
+
+## 9. Steam/Proton tuning adopted from Bazzite
+
+Read from `ublue-os/bazzite` (the org is no longer `UniversalBlue/*`, which 404s)
+and filtered against this image: Kinoite + niri + DMS, not GNOME/KDE, not a Deck.
+
+### Applied — two overlays, in the image
+
+| File | Contents |
+| ---- | -------- |
+| `/usr/lib/sysctl.d/70-kinrin-gaming.conf` | `vm.max_map_count=2147483642`, `kernel.split_lock_mitigate=0` |
+| `/etc/security/limits.d/60-kinrin-memlock.conf` | `memlock 2147484`, hard and soft |
+
+`vm.max_map_count` matters because the default 65530 makes large titles fail to
+start rather than merely degrade. `split_lock_mitigate=0` trades a security
+mitigation for throughput — that is Bazzite's deliberate trade for a gaming
+image, recorded rather than applied silently.
+
+Both keys were checked with `sysctl -n` on the real kernel (`7.2.4-ogc3.1.fc44`)
+before being written. `systemd-sysctl` ignores an unknown key without warning,
+so a typo is indistinguishable from a setting that does nothing.
+
+The presence gate was extended to cover both new destinations: 15 of 15 now.
+A staged file that no gate checks is the false green PLAN §3.2 rules out.
+
+### Applied — host-side, not in the image
+
+**Steam shader precaching.** Steam precaches shaders single-threaded unless
+`unShaderBackgroundProcessingThreads` is set in
+`~/.steam/steam/steam_dev.cfg`. Bazzite writes it from a wrapper; there is no
+image-side equivalent, and `~/.steam` is machine state on Atomic.
+
+```sh
+mkdir -p ~/.steam/steam
+sed -i 's/^unShaderBackgroundProcessingThreads.*//' ~/.steam/steam/steam_dev.cfg
+echo "unShaderBackgroundProcessingThreads $(( $(nproc) > 16 ? 16 : $(nproc) - 2 ))" \
+  >> ~/.steam/steam/steam_dev.cfg
+```
+
+### Refused — `ntsync`
+
+Bazzite loads `ntsync` from `modules-load.d/wine-ntsync.conf` to cut busyspin in
+Proton games. **Fedora 44's kernel does not have it**:
+
+```
+modinfo ntsync  -> Module ntsync not found
+```
+
+`kyber` and `bfq` are absent too, so Bazzite's scheduler files have nothing to
+bind to either. Writing the line would have produced a boot warning and no
+benefit — cargo-culting a config from an image with a different kernel. It
+becomes valid if the kernel ships it.
+
+### Refused — the `extest` preload
+
+Bazzite ships `libextest.so` and `LD_PRELOAD`s it for Wayland sessions, which is
+what makes Steam Input and the Steam controller work there. Tempting for niri,
+and PROMPT §826-832 rules it out in as many words: *"Do not ship it
+speculatively… Host-side only: do not bake it into the image."* The reason is
+persistence — a library under `/usr/lib64` is wiped by `bootc switch`, whereas
+`/usr/local` is a symlink to `/var/usrlocal` and survives. The remedy already
+documented in `TESTING.md` stays host-side and stays there until criterion 22
+reproduces on real hardware, which it has not.
+
+### Deliberately not taken
+
+gamescope/MangoHud/umu from Terra's third-party repo, `nice -8` for Proton
+(Bazzite keeps that in `deck/shared`, so it does not apply it to its own desktop
+images either), Sunshine (its virtual monitor uses `kscreen-doctor`, KWin-only),
+Waydroid, the whole gamescope session / `steamos-manager` stack, and every
+Deck-specific preset.

@@ -45,3 +45,10 @@ files:
   # configVersion is re-read from the installed dms before each build.
   - source: etc/skel/.config/DankMaterialShell/settings.json
     destination: /etc/skel/.config/DankMaterialShell/settings.json
+  # Steam/Proton tuning from Bazzite, verified key-by-key against this kernel
+  # before being written. See files/usr/lib/sysctl.d/70-kinrin-gaming.conf.
+  - source: usr/lib/sysctl.d/70-kinrin-gaming.conf
+    destination: /usr/lib/sysctl.d/70-kinrin-gaming.conf
+  # memlock for DXVK/Wine. Same source, same reasoning.
+  - source: etc/security/limits.d/60-kinrin-memlock.conf
+    destination: /etc/security/limits.d/60-kinrin-memlock.conf
