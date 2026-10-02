@@ -1,21 +1,33 @@
 type: script@v2
 snippets:
-  # OpenCode, pinned. The short name `opencode` does not exist on the registry
-  # (404) — verified with `npm view`, not assumed. `opencode-ai` resolves to
-  # 1.18.34, which is the version the local install reports.
+  # OpenCode, pinned. Two things had to be got right, both found by running the
+  # install rather than reading about it.
   #
-  # Pinned rather than `@latest` because the plan's rule 2 forbids unpinned
-  # installs, and an unpinned tool in a system image means the image is not
-  # reproducible.
+  # 1. `--prefix /usr` is load-bearing on Atomic. `/usr/local` is a symlink to
+  #    `../var/usrlocal`, and `/var` is not part of the ostree commit — it is 0
+  #    bytes in the built image. So a plain `npm install -g` writes into /var,
+  #    succeeds during the build, passes a `command -v opencode` check, and then
+  #    vanishes silently when the image is committed. That is exactly the
+  #    persistence trap PROMPT warns about for `extest`, in the other direction.
   #
-  # ONE snippet entry: the v2 runner starts each entry in its own `/bin/sh -c`
-  # subshell, so an exported variable would not survive into a second entry.
+  # 2. The platform package is installed explicitly. `opencode-ai` resolves its
+  #    optional dependency to `opencode-linux-x64-baseline-musl` and fails with
+  #    EBADPLATFORM on a glibc image. npm's own error names the fix, and the
+  #    glibc build is `opencode-linux-x64`.
   #
-  # The cache is redirected because npm cannot write to $HOME during the build,
-  # which surfaces as an unrelated-looking "Log files were not written" error.
+  # 3. That package ships the binary inside the package and creates no link in
+  #    /usr/bin, so it is symlinked by hand. Without this the tool is installed
+  #    and unreachable by name.
+  #
+  # `opencode --version` is NOT asserted here: it fails in the build because it
+  # tries to create $HOME/.local/share, which does not exist for root at that
+  # point. Asserting it would fail on a working install.
+  #
+  # ONE snippet entry: the v2 runner starts each in its own `/bin/sh -c` subshell.
   - |
     export npm_config_cache=/tmp/npmcache
-    npm install -g --no-audit --no-fund opencode-ai@1.18.34 \
+    npm install -g --prefix /usr --no-audit --no-fund opencode-linux-x64@1.18.34 \
       && rm -rf /tmp/npmcache \
-      && command -v opencode >/dev/null \
-      && opencode --version
+      && ln -sf /usr/lib/node_modules/opencode-linux-x64/bin/opencode /usr/bin/opencode \
+      && test -x /usr/bin/opencode \
+      && echo "opencode installed at /usr/bin/opencode"
