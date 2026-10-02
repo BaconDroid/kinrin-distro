@@ -1,117 +1,62 @@
 type: files
 files:
-  # §4.2 — the KDE portal backend, unreachable under `niri` without this.
-  - source: etc/xdg/xdg-desktop-portal/portals.conf
-    destination: /etc/xdg/xdg-desktop-portal/portals.conf
-  # §4.1 — greetd 0.10 syntax; `user = "greeter"` is also read back by the
-  # dms-greeter %post to chown the cache. §7's "never edit a shipped file" has
-  # no exception to fall back on here: greetd reads no drop-in directory.
-  - source: etc/greetd/config.toml
-    destination: /etc/greetd/config.toml
-  # §4.0 — HandleLidSwitch, shipped with its section header or logind drops it.
-  - source: etc/systemd/logind.conf.d/kinrin.conf
-    destination: /etc/systemd/logind.conf.d/kinrin.conf
-  # §4.8 — binds dms.service to niri.service. `Wants=` has no stop semantics.
-  - source: usr/lib/systemd/user/niri.service.d/kinrin-dms.conf
-    destination: /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf
-  # §4.7 — unit-scoped, so it never leaks into the Plasma fallback.
-  - source: usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf
-    destination: /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf
-  # §4.7 — a second drop-in because `Environment=` never reaches a `Wants=`ed unit.
-  - source: usr/lib/systemd/user/niri.service.d/kinrin-theme.conf
-    destination: /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf
-  # §4.7 — `PartOf=niri.service` is what actually stops DMS with the session.
-  - source: usr/lib/systemd/user/dms.service.d/kinrin-theme.conf
-    destination: /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf
-  # §4.4 — activates the VRR unit. Nothing enables it; a [Install] section here
-  # would start it in every session, Plasma included.
-  - source: usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf
-    destination: /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf
-  # §4.4 — TimeoutStartSec=infinity, never 0, which is a zero-second budget.
-  - source: usr/lib/systemd/user/niri-vrr.service
-    destination: /usr/lib/systemd/user/niri-vrr.service
-  # §4.7 — two keys unrelated to DMS; none of the three DMS variables appears here.
-  - source: etc/environment.d/90-dms.conf
-    destination: /etc/environment.d/90-dms.conf
-  # §4.14 — without this the `dms setup` in niri-config.yaml refuses an
-  # immutable Kinoite. `immutable_system: false` is the operative key.
-  - source: usr/share/dms/cli-policy.json
-    destination: /usr/share/dms/cli-policy.json
-  # §4.4 — the window rules, reached through the include niri-config.yaml
-  # prepends to the generated binds.kdl.
-  - source: etc/skel/.config/niri/local.kdl
-    destination: /etc/skel/.config/niri/local.kdl
-  # §4.12 — applies Dracula at first login with nothing touched. The
-  # configVersion is re-read from the installed dms before each build.
-  - source: etc/skel/.config/DankMaterialShell/settings.json
-    destination: /etc/skel/.config/DankMaterialShell/settings.json
-  # Steam/Proton tuning from Bazzite, verified key-by-key against this kernel
-  # before being written. See files/usr/lib/sysctl.d/70-kinrin-gaming.conf.
-  - source: usr/lib/sysctl.d/70-kinrin-gaming.conf
-    destination: /usr/lib/sysctl.d/70-kinrin-gaming.conf
-  # Dracula, vendored from the official GitHub repositories and staged into
-  # the skel. URLs verified to return 200 before vendoring; each repository
-  # has its own default branch, which is why the paths differ.
-  #   tmux     dracula/tmux@master        (3 files: a TPM plugin, not a .conf)
-  #   konsole  dracula/konsole@master    (complete [Background]/[Color0..7])
-  #   opencode dracula/opencode@main     (dracula is NOT a built-in theme)
-  #   kde      hand-written from draculatheme.com/spec: no upstream exists
-  # Activation files below each of those, because a staged theme is not an
-  # applied one.
-  - source: etc/skel/.tmux.conf
-    destination: /etc/skel/.tmux.conf
-  - source: etc/skel/.config/tmux/dracula.tmux
-    destination: /etc/skel/.config/tmux/dracula.tmux
-  - source: etc/skel/.config/tmux/scripts/dracula.sh
-    destination: /etc/skel/.config/tmux/scripts/dracula.sh
-  - source: etc/skel/.config/tmux/scripts/utils.sh
-    destination: /etc/skel/.config/tmux/scripts/utils.sh
-  - source: etc/skel/.config/konsolerc
-    destination: /etc/skel/.config/konsolerc
-  - source: etc/skel/.local/share/konsole/Dracula.colorscheme
-    destination: /etc/skel/.local/share/konsole/Dracula.colorscheme
-  - source: etc/skel/.local/share/konsole/Dracula.profile
-    destination: /etc/skel/.local/share/konsole/Dracula.profile
-  - source: etc/skel/.local/share/color-schemes/Dracula.colors
-    destination: /etc/skel/.local/share/color-schemes/Dracula.colors
-  - source: etc/skel/.config/opencode/tui.json
-    destination: /etc/skel/.config/opencode/tui.json
-  - source: etc/skel/.config/opencode/themes/dracula.json
-    destination: /etc/skel/.config/opencode/themes/dracula.json
-  - source: etc/skel/.config/Kvantum/Dracula/Dracula.kvconfig
-    destination: /etc/skel/.config/Kvantum/Dracula/Dracula.kvconfig
-  - source: etc/skel/.config/Kvantum/Dracula/Dracula.svg
-    destination: /etc/skel/.config/Kvantum/Dracula/Dracula.svg
-  - source: etc/skel/.config/Kvantum/kvantum.kvconfig
-    destination: /etc/skel/.config/Kvantum/kvantum.kvconfig
-  - source: etc/skel/.config/qt6ct/qt6ct.conf
-    destination: /etc/skel/.config/qt6ct/qt6ct.conf
-  - source: etc/skel/.config/qt6ct/colors/Dracula.conf
-    destination: /etc/skel/.config/qt6ct/colors/Dracula.conf
-  - source: etc/skel/.config/environment.d/91-qt-theme.conf
-    destination: /etc/skel/.config/environment.d/91-qt-theme.conf
-  # GTK: dracula/gtk at the same pinned commit as the Kvantum theme above.
-  # Themes Firefox, libadwaita and every GTK application. Only the gtk-3.0
-  # and gtk-4.0 trees are taken: metacity-1 and xfwm4 are X11 window-decoration
-  # engines, and niri is a Wayland compositor that draws its own decorations, so
-  # they would be inert here.
-  - source: etc/skel/.themes/Dracula/gtk-3.0/gtk-widgets.css
-    destination: /etc/skel/.themes/Dracula/gtk-3.0/gtk-widgets.css
-  - source: etc/skel/.themes/Dracula/gtk-3.0/gtk.css
-    destination: /etc/skel/.themes/Dracula/gtk-3.0/gtk.css
-  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets-dark.svg
-    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets-dark.svg
-  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets.svg
-    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets.svg
-  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-selection.svg
-    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-selection.svg
-  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets-hidpi.py
-    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets-hidpi.py
-  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets.py
-    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets.py
-  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/wm_controls.fish
-    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/wm_controls.fish
-  - source: etc/skel/.themes/Dracula/gtk-4.0/gtk.css
-    destination: /etc/skel/.themes/Dracula/gtk-4.0/gtk.css
-  - source: etc/skel/.themes/Dracula/index.theme
-    destination: /etc/skel/.themes/Dracula/index.theme
+- source: etc/xdg/xdg-desktop-portal/portals.conf
+  destination: /etc/xdg/xdg-desktop-portal/portals.conf
+- source: etc/greetd/config.toml
+  destination: /etc/greetd/config.toml
+- source: etc/systemd/logind.conf.d/kinrin.conf
+  destination: /etc/systemd/logind.conf.d/kinrin.conf
+- source: usr/lib/systemd/user/niri.service.d/kinrin-dms.conf
+  destination: /usr/lib/systemd/user/niri.service.d/kinrin-dms.conf
+- source: usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf
+  destination: /usr/lib/systemd/user/niri.service.d/kinrin-xdg.conf
+- source: usr/lib/systemd/user/niri.service.d/kinrin-theme.conf
+  destination: /usr/lib/systemd/user/niri.service.d/kinrin-theme.conf
+- source: usr/lib/systemd/user/dms.service.d/kinrin-theme.conf
+  destination: /usr/lib/systemd/user/dms.service.d/kinrin-theme.conf
+- source: usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf
+  destination: /usr/lib/systemd/user/niri.service.d/kinrin-vrr.conf
+- source: usr/lib/systemd/user/niri-vrr.service
+  destination: /usr/lib/systemd/user/niri-vrr.service
+- source: etc/environment.d/90-dms.conf
+  destination: /etc/environment.d/90-dms.conf
+- source: usr/share/dms/cli-policy.json
+  destination: /usr/share/dms/cli-policy.json
+- source: etc/skel/.config/niri/local.kdl
+  destination: /etc/skel/.config/niri/local.kdl
+- source: etc/skel/.config/DankMaterialShell/settings.json
+  destination: /etc/skel/.config/DankMaterialShell/settings.json
+- source: usr/lib/sysctl.d/70-kinrin-gaming.conf
+  destination: /usr/lib/sysctl.d/70-kinrin-gaming.conf
+- source: etc/skel/.tmux.conf
+  destination: /etc/skel/.tmux.conf
+- source: etc/skel/.config/tmux/dracula.tmux
+  destination: /etc/skel/.config/tmux/dracula.tmux
+- source: etc/skel/.config/tmux/scripts/dracula.sh
+  destination: /etc/skel/.config/tmux/scripts/dracula.sh
+- source: etc/skel/.config/tmux/scripts/utils.sh
+  destination: /etc/skel/.config/tmux/scripts/utils.sh
+- source: etc/skel/.config/konsolerc
+  destination: /etc/skel/.config/konsolerc
+- source: etc/skel/.local/share/konsole/Dracula.colorscheme
+  destination: /etc/skel/.local/share/konsole/Dracula.colorscheme
+- source: etc/skel/.local/share/konsole/Dracula.profile
+  destination: /etc/skel/.local/share/konsole/Dracula.profile
+- source: etc/skel/.local/share/color-schemes/Dracula.colors
+  destination: /etc/skel/.local/share/color-schemes/Dracula.colors
+- source: etc/skel/.config/opencode/tui.json
+  destination: /etc/skel/.config/opencode/tui.json
+- source: etc/skel/.config/opencode/themes/dracula.json
+  destination: /etc/skel/.config/opencode/themes/dracula.json
+- source: etc/skel/.config/Kvantum/Dracula/Dracula.kvconfig
+  destination: /etc/skel/.config/Kvantum/Dracula/Dracula.kvconfig
+- source: etc/skel/.config/Kvantum/Dracula/Dracula.svg
+  destination: /etc/skel/.config/Kvantum/Dracula/Dracula.svg
+- source: etc/skel/.config/Kvantum/kvantum.kvconfig
+  destination: /etc/skel/.config/Kvantum/kvantum.kvconfig
+- source: etc/skel/.config/qt6ct/qt6ct.conf
+  destination: /etc/skel/.config/qt6ct/qt6ct.conf
+- source: etc/skel/.config/qt6ct/colors/Dracula.conf
+  destination: /etc/skel/.config/qt6ct/colors/Dracula.conf
+- source: etc/skel/.config/environment.d/91-qt-theme.conf
+  destination: /etc/skel/.config/environment.d/91-qt-theme.conf

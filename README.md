@@ -24,7 +24,7 @@ greetd ──▶ dms-greeter
 | | |
 |---|---|
 | Session | `niri` + `dms-greeter` login screen |
-| Theming | Dracula: **DMS** (its own `theme.json`), **Konsole**, **tmux**, **OpenCode**, and **Plasma/Dolphin**. Not themed: Kate (no syntax engine in this image), GTK apps, GIMP 3 |
+| Theming | Dracula: **DMS**, **all Qt apps** (Kvantum + qt6ct), **tmux**, **OpenCode**. Not themed: GTK apps (measured as near-worthless here), Kate (no syntax engine), GIMP 3 |
 
 The theming row above was wrong until this was checked in the image. `matugen`
 is installed — it ships with Kinoite at `/usr/sbin/matugen` — but **no recipe in
@@ -451,7 +451,6 @@ default branch is **not** the same everywhere (`master` for tmux/konsole,
 | **OpenCode** | `dracula/opencode@main` | `dracula` is **not** a built-in theme |
 | **Plasma / Dolphin** | hand-written from `draculatheme.com/spec` | **no upstream theme exists** |
 | **All Qt apps** | `dracula/gtk@kde/kvantum` + `dracula/qt5` | Kvantum widget style + qt6ct palette |
-| **All GTK apps** | `dracula/gtk` (same pinned commit) | themes Firefox, libadwaita, every GTK app |
 
 Two details that are easy to get wrong:
 
@@ -497,27 +496,27 @@ Two things that cost time to get right:
 `QT_QPA_PLATFORMTHEME=qt6ct` is set in `environment.d`, not as an exported shell
 variable, so it reaches the session without being set by hand.
 
-### GTK — the last visible gap, now closed
+### GTK — measured, then removed
 
-`dracula/gtk` at the same pinned commit as the Kvantum theme. It carries four
-generations, all verified 200:
+A Dracula GTK theme was vendored here and then **taken out again**, because
+measuring what it would have covered showed it was worth almost nothing on this
+image:
 
 ```
-gtk-2.0/gtkrc   200     gtk-3.0/gtk.css     200
-gtk-3.20/gtk.css 200    gtk-4.0/gtk.css     200
+firefox : 0 libgtk links
+orca    : 0 libgtk links
+zenity  : 1 libgtk link
+gtk4    : required by NO package
 ```
 
-Only `gtk-3.0` and `gtk-4.0` are vendored. **`metacity-1` and `xfwm4` are
-deliberately excluded**: they are X11 window-decoration engines, and niri is a
-Wayland compositor that draws its own decorations, so they would be inert.
+Firefox and Orca — the only user-facing applications besides Qt ones — carry no
+GTK at all; they are Electron. `gtk4` is a leftover from the Kinoite base that
+nothing depends on, and `gtk3` is pulled in only by four system tools. So the
+theme would have covered exactly one thing: the `zenity` dialog.
 
-Both `gtk-3.0/settings.ini` and `gtk-4.0/settings.ini` set
-`gtk-theme-name=Dracula` with `gtk-application-prefer-dark-theme=1`.
-
-One upstream gap, recorded rather than papered over: `gtk-3.0/gtk.css` references
-`assets/color-button-auto.png`, but **`gtk-3.0/assets/` is empty upstream**. The
-GTK4 tree does ship six assets, which are vendored. So one button-state image may
-fall back to a default in GTK3. That is upstream's gap, not a packaging error.
+Kvantum and qt6ct, by contrast, cover the applications that actually make up the
+desktop — `konsole`, `kate`, `dolphin`, `systemsettings`. That is where the
+effort belongs, and it is already in place.
 
 ### What is deliberately not themed
 
