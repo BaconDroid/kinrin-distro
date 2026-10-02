@@ -704,14 +704,33 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p iso
-          # --secure-boot-url defaults to Universal Blue's key, which is WRONG for
-          # this image: an ISO that enrolls a key it does not own cannot chain to
-          # the base image's shim. Recorded rather than silently inherited.
           # `image` is a SUBCOMMAND and belongs after the options. Without it clap
           # reads the image ref as an unknown subcommand and exits 2.
+          #
+          # --secure-boot-url defaults to Universal Blue's key, which is WRONG for
+          # this image: an ISO that enrolls a key it does not own cannot chain to
+          # this image's shim, and on a Secure Boot machine it simply refuses to
+          # boot -- which reads as "broken image" rather than "wrong key".
+          #
+          # This is Fedora's own Secure Boot CA, verified before being written here:
+          #   subject  = C=US, ST=Massachusetts, L=Cambridge, O=Red Hat, Inc.,
+          #              OU=Fedora Secure Boot CA 20200709, CN=fedoraca
+          #   notAfter = Jan 19 2037
+          #   sha1     = 2B:B0:10:E2:4D:94:C6:32:24:58:89:BA:AA:9E:D0:F3:D5:EF:1F:68
+          # The URL is pinned to a commit (the /raw/f40/f/ component), so it cannot
+          # drift under us the way a branch or tag reference would.
+          #
+          # --enrollment-password defaults to the literal string "universalblue".
+          # A user hitting the MOK prompt would be told to type a competitor's name
+          # to install this image, and would install nothing if they typed ours.
+          # It is not a secret -- it is a shared passphrase the installer asks the
+          # user to type once, on their own machine, and it is documented in the
+          # README.
           bluebuild -vv generate-iso \
             --output-dir iso \
             --variant kinoite \
+            --secure-boot-url https://src.fedoraproject.org/rpms/shim-unsigned-x64/raw/f40/f/fedora-ca-20200709.cer \
+            --enrollment-password kinrin \
             image "ghcr.io/${REPO,,}:latest"
 
           # Measured, not assumed: the whole DVD question turns on this number, and

@@ -87,7 +87,18 @@ you. `@sha256:` is what you want when the install has to be reproducible: no tag
 designates a stable image across builds, so the digest is the only reference
 that keeps resolving to the same bits.
 
-Bare hardware: `bootc install` from a live ISO. There is no ISO on GitHub.
+Bare hardware: `bootc install` from the ISO that each release produces. There is
+no ISO attached to the GitHub Release — at 5.4 GiB it is over the 2 GiB asset
+limit, so it is a workflow artifact instead, and every Release's notes carry the
+`gh run download` command that fetches it.
+
+If your machine has Secure Boot enabled, the installer asks for a key enrollment
+password. It is **`kinrin`**. This is not a secret and there is nothing to
+protect: it is a passphrase the installer asks you to type once, on your own
+machine, so that Fedora's Secure Boot CA can be enrolled. The key itself is
+Red Hat's `Fedora Secure Boot CA 20200709`, not Universal Blue's — the earlier
+default would have enrolled a key this image cannot chain to, and the ISO would
+have refused to boot with an error that gives no hint why.
 
 Keep the deployment layer-free before switching: on a deployment with a layer,
 layered packages disappear without a message and `bootc upgrade` refuses
