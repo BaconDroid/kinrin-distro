@@ -451,6 +451,7 @@ default branch is **not** the same everywhere (`master` for tmux/konsole,
 | **OpenCode** | `dracula/opencode@main` | `dracula` is **not** a built-in theme |
 | **Plasma / Dolphin** | hand-written from `draculatheme.com/spec` | **no upstream theme exists** |
 | **All Qt apps** | `dracula/gtk@kde/kvantum` + `dracula/qt5` | Kvantum widget style + qt6ct palette |
+| **All GTK apps** | `dracula/gtk` (same pinned commit) | themes Firefox, libadwaita, every GTK app |
 
 Two details that are easy to get wrong:
 
@@ -496,14 +497,42 @@ Two things that cost time to get right:
 `QT_QPA_PLATFORMTHEME=qt6ct` is set in `environment.d`, not as an exported shell
 variable, so it reaches the session without being set by hand.
 
+### GTK — the last visible gap, now closed
+
+`dracula/gtk` at the same pinned commit as the Kvantum theme. It carries four
+generations, all verified 200:
+
+```
+gtk-2.0/gtkrc   200     gtk-3.0/gtk.css     200
+gtk-3.20/gtk.css 200    gtk-4.0/gtk.css     200
+```
+
+Only `gtk-3.0` and `gtk-4.0` are vendored. **`metacity-1` and `xfwm4` are
+deliberately excluded**: they are X11 window-decoration engines, and niri is a
+Wayland compositor that draws its own decorations, so they would be inert.
+
+Both `gtk-3.0/settings.ini` and `gtk-4.0/settings.ini` set
+`gtk-theme-name=Dracula` with `gtk-application-prefer-dark-theme=1`.
+
+One upstream gap, recorded rather than papered over: `gtk-3.0/gtk.css` references
+`assets/color-button-auto.png`, but **`gtk-3.0/assets/` is empty upstream**. The
+GTK4 tree does ship six assets, which are vendored. So one button-state image may
+fall back to a default in GTK3. That is upstream's gap, not a packaging error.
+
 ### What is deliberately not themed
 
 - **Kate** — there is no syntax-highlighting engine in this image: `kate-libs`
   ships zero schema files and `kate` has no katepart dependency. The upstream
   `dracula.kateschema` would be inert. Syntax colouring would mean adding the
   engine, which is a much larger change.
-- **GTK applications** — theming them means authoring a GTK theme, not writing a
-  setting. Out of scope here, and unverifiable without hardware.
+- **Firefox** — the theme exists upstream (`dracula/firefox`, `Dracula Dark Theme`
+  1.11) but it is a **WebExtension, not a userChrome**. Its ID
+  `{b743f56d-1cc1-4048-8ba6-f9c2ab7aa54d}` returns 404 from AMO, so it is
+  **unsigned**, and a release Firefox refuses to install it without Developer
+  Edition. Shipping it would mean either disabling signature enforcement — which
+  turns a browser into an unverified-code host — or leaving a file in the image
+  that does nothing. Neither is acceptable, so Firefox is themed by GTK instead,
+  which is how the rest of the Firefox UI gets its colours anyway.
 - **GIMP** — the upstream theme targets GIMP 2.10/GTK2; Fedora 44 ships GIMP 3,
   which does not read `gtkrc`.
 

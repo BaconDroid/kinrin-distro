@@ -90,3 +90,28 @@ files:
     destination: /etc/skel/.config/qt6ct/colors/Dracula.conf
   - source: etc/skel/.config/environment.d/91-qt-theme.conf
     destination: /etc/skel/.config/environment.d/91-qt-theme.conf
+  # GTK: dracula/gtk at the same pinned commit as the Kvantum theme above.
+  # Themes Firefox, libadwaita and every GTK application. Only the gtk-3.0
+  # and gtk-4.0 trees are taken: metacity-1 and xfwm4 are X11 window-decoration
+  # engines, and niri is a Wayland compositor that draws its own decorations, so
+  # they would be inert here.
+  - source: etc/skel/.themes/Dracula/gtk-3.0/gtk-widgets.css
+    destination: /etc/skel/.themes/Dracula/gtk-3.0/gtk-widgets.css
+  - source: etc/skel/.themes/Dracula/gtk-3.0/gtk.css
+    destination: /etc/skel/.themes/Dracula/gtk-3.0/gtk.css
+  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets-dark.svg
+    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets-dark.svg
+  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets.svg
+    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-assets.svg
+  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-selection.svg
+    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/gtk3-selection.svg
+  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets-hidpi.py
+    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets-hidpi.py
+  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets.py
+    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/render-gtk3-assets.py
+  - source: etc/skel/.themes/Dracula/gtk-4.0/assets/wm_controls.fish
+    destination: /etc/skel/.themes/Dracula/gtk-4.0/assets/wm_controls.fish
+  - source: etc/skel/.themes/Dracula/gtk-4.0/gtk.css
+    destination: /etc/skel/.themes/Dracula/gtk-4.0/gtk.css
+  - source: etc/skel/.themes/Dracula/index.theme
+    destination: /etc/skel/.themes/Dracula/index.theme
