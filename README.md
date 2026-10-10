@@ -19,6 +19,12 @@ greetd ──▶ dms-greeter
   **bootc**; rpm-ostree is the deployment system.
 - **No layering.** The image is rebuilt, never patched.
 
+The specification this image implements lives in [`docs/PLAN.md`](docs/PLAN.md) —
+the `PLAN §…` references below and in [`NOTES.md`](NOTES.md) /
+[`TESTING.md`](TESTING.md) resolve there. Design rationale is in
+[`docs/DOSSIER.md`](docs/DOSSIER.md); machine-specific steps kept out of the image
+are in [`docs/HOST-SIDE.md`](docs/HOST-SIDE.md). Index: [`docs/README.md`](docs/README.md).
+
 ## What is in the box
 
 | | |
