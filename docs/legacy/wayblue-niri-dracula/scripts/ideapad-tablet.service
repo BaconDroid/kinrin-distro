@@ -1,0 +1,14 @@
+[Unit]
+Description=IdeaPad Flex accelerometer auto-rotate for Niri
+Documentation=file://%h/.local/bin/ideapad-tablet.sh
+PartOf=graphical-session.target
+After=niri.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/ideapad-tablet.sh
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
